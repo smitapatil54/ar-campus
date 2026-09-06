@@ -4,246 +4,1164 @@ import { OrbitControls, Html, Line, Text } from "@react-three/drei";
 import * as THREE from "three";
 
 /*
-  MHSSCOE Campus 3D Navigation
-  ------------------------------------------------------------
-  UX flow:
-  1. Explore = full campus / exterior overview
-  2. Start Navigation = smooth camera flight to Main Gate
-  3. "START HERE" appears
-  4. Camera enters the college
-  5. Floor + corridor + destination become visible
-  6. Blue route connects the user to the destination
+  Campus3D.jsx
+  ------------------------------------------------------------------
+  MHSSCOE / AR CAMPUS - interactive 3D campus prototype.
 
-  This is a stylized architectural reconstruction for the prototype.
-  It is intentionally built from reusable geometry instead of generic boxes.
+  Reference experience:
+  - Free orbit / zoom / pan like the supplied Queen's College model.
+  - High/top/low/rear camera views.
+  - Main central block + clearly separated left/right wings.
+  - Roofs and upper structures are visible from top view.
+  - Main/student/service/exit gates and approach paths.
+  - Visible stairs with individual steps and landings.
+  - Cutaway floor maps with classrooms/labs/corridors/lifts.
+  - Blue route from current location to destination.
+  - Navigation keeps the same public props used by the existing page.
+
+  Important:
+  The geometry is a prototype reconstruction, not a survey-grade floor plan.
+  Exact room coordinates should be replaced when an official CAD/floor plan
+  is available. The official college site confirms a Ground + five-floor
+  main building and separate facilities such as the library/cafeteria.
 */
 
 const C = {
-  ground: "#e8e6df",
-  road: "#c9c8c1",
-  facade: "#d9c7b3",
-  facadeLight: "#eadccb",
-  trim: "#704c3d",
-  trimDark: "#4c342d",
-  roof: "#62504a",
-  arch: "#f4eadf",
-  glass: "#7ea8b4",
-  window: "#58757d",
-  greenery: "#5c8c63",
-  greenDark: "#3f6848",
+  sky: "#dcecf5",
+  ground: "#e7e4dd",
+  road: "#c8c8c4",
+  path: "#d5b9a5",
+  wall: "#e7ded3",
+  wall2: "#f0e7dc",
+  stone: "#78685f",
+  brick: "#a9674d",
+  brickDark: "#724536",
+  roof: "#62524c",
+  roofLight: "#80675d",
+  glass: "#79a8b4",
+  window: "#5c7d85",
+  railing: "#5a3d34",
+  metal: "#4b5157",
+  wood: "#80604f",
+  green: "#4e7e55",
+  green2: "#67966a",
   blue: "#2f6fed",
-  blueSoft: "#73a8ff",
-  red: "#d94b4b",
-  white: "#ffffff",
+  blue2: "#73a8ff",
+  red: "#dc4c4c",
+  yellow: "#f3c75f",
   text: "#172033",
-  yellow: "#f4c95d",
+  white: "#ffffff",
 };
+
+const FLOOR_H = 3.15;
+const FLOORS = 6; // Ground + five upper floors
 
 const DESTINATIONS = {
-  "IT Lab": { floor: 2, room: "IT LAB", position: [5.8, 8.9, -1.2] },
-  "IT-301": { floor: 3, room: "IT-301", position: [4.9, 13.4, -1.2] },
-  "IT-302": { floor: 2, room: "IT-302", position: [4.1, 8.9, -1.2] },
-  "IT-303": { floor: 3, room: "IT-303", position: [2.6, 13.4, -1.2] },
-  "AI Lab": { floor: 2, room: "AI LAB", position: [1.9, 8.9, -1.2] },
-  Library: { floor: 1, room: "LIBRARY", position: [-5.7, 4.5, -1.2] },
-  Canteen: { floor: 0, room: "CANTEEN", position: [7.4, 0.7, -1.2] },
-  "Placement Cell": { floor: 1, room: "PLACEMENT", position: [-1.8, 4.5, -1.2] },
+  "IT Lab": { floor: 2, room: "IT LAB", x: 8.2, z: -5.7 },
+  "IT-301": { floor: 3, room: "IT-301", x: 7.7, z: -5.7 },
+  "IT-302": { floor: 2, room: "IT-302", x: 2.2, z: -5.7 },
+  "IT-303": { floor: 3, room: "IT-303", x: 2.2, z: -5.7 },
+  "AI Lab": { floor: 2, room: "AI LAB", x: -7.7, z: -5.7 },
+  Library: { floor: 1, room: "LIBRARY", x: -6.8, z: 5.4 },
+  Canteen: { floor: 0, room: "CANTEEN", x: 9.2, z: 4.9 },
+  "Placement Cell": { floor: 1, room: "PLACEMENT CELL", x: -1.8, z: 5.3 },
+  "Alma Latifi Hall": { floor: 1, room: "ALMA LATIFI HALL", x: 7.5, z: 5.2 },
+  "Room 103": { floor: 1, room: "ROOM 103", x: 1.9, z: -5.6 },
+  "Room 104": { floor: 1, room: "ROOM 104", x: 7.0, z: -5.6 },
+  "Computer Centre": { floor: 3, room: "COMPUTER CENTRE", x: -7.2, z: -5.6 },
+  "Seminar Hall": { floor: 4, room: "SEMINAR HALL", x: 1.0, z: -5.6 },
+  "Room 407": { floor: 4, room: "ROOM 407", x: 7.4, z: -5.6 },
+  BCR: { floor: 4, room: "BCR", x: -7.4, z: -5.6 },
+  "GCR": { floor: 0, room: "GCR", x: -7.8, z: 5.0 },
+  "Adv. Communication Lab": { floor: 5, room: "ADV. COMMUNICATION LAB", x: -7.2, z: -5.6 },
+  "Basic Communication Lab": { floor: 5, room: "BASIC COMMUNICATION LAB", x: 0, z: -5.6 },
+  "MFOC Lab": { floor: 5, room: "MFOC LAB", x: 7.2, z: -5.6 },
+  "Antenna Lab": { floor: 5, room: "ANTENNA LAB", x: -3.0, z: 5.4 },
 };
 
-function useTarget(destination) {
+const FLOOR_ROOMS = {
+  0: [
+    ["GCR", -8.2, 5.2, 5.5, "facility"],
+    ["CANTEEN", 8.4, 5.2, 5.8, "facility"],
+    ["MAIN ENTRANCE", 0, -5.6, 6.2, "entry"],
+    ["SECURITY / RECEPTION", -1.8, 5.2, 3.8, "office"],
+  ],
+  1: [
+    ["ALMA LATIFI HALL", -8.0, 5.1, 5.7, "hall"],
+    ["PLACEMENT CELL", -1.9, 5.1, 4.0, "office"],
+    ["ROOM 103", 1.8, -5.4, 4.3, "class"],
+    ["ROOM 104", 7.0, -5.4, 4.5, "class"],
+    ["LIBRARY", 8.0, 5.1, 5.3, "library"],
+  ],
+  2: [
+    ["AI LAB", -7.5, -5.4, 5.2, "lab"],
+    ["PROGRAMMING LAB", -1.9, 5.1, 5.2, "lab"],
+    ["IT-302", 2.0, -5.4, 4.3, "class"],
+    ["IT LAB", 7.7, -5.4, 5.3, "lab"],
+  ],
+  3: [
+    ["COMPUTER CENTRE", -7.4, -5.4, 5.4, "lab"],
+    ["IT-303", 2.0, -5.4, 4.3, "class"],
+    ["IT-301", 7.4, -5.4, 4.5, "class"],
+    ["STUDENT LIFT", -10.8, 5.0, 3.0, "lift"],
+  ],
+  4: [
+    ["BCR", -7.5, -5.4, 5.0, "facility"],
+    ["SEMINAR HALL", 0.8, -5.4, 6.0, "hall"],
+    ["ROOM 407", 7.4, -5.4, 4.3, "class"],
+  ],
+  5: [
+    ["ADV. COMMUNICATION LAB", -7.3, -5.4, 5.5, "lab"],
+    ["BASIC COMMUNICATION LAB", 0, -5.4, 5.5, "lab"],
+    ["MFOC LAB", 7.2, -5.4, 4.5, "lab"],
+    ["ANTENNA LAB", -3.2, 5.1, 4.5, "lab"],
+  ],
+};
+
+function getTarget(destination) {
   return DESTINATIONS[destination] || DESTINATIONS["IT Lab"];
 }
 
-function SmoothCamera({ mode, targetFloor = 2, navigationPhase = "stairs", currentStep = 0, onArrive }) {
-  const { camera } = useThree();
-  const controls = useRef();
+function roundedMaterial(color, roughness = 0.72, metalness = 0) {
+  return <meshStandardMaterial color={color} roughness={roughness} metalness={metalness} />;
+}
 
-  const targets = useMemo(
-    () => ({
-      campus: {
-        position: new THREE.Vector3(28, 28, 34),
-        look: new THREE.Vector3(0, 3, 0),
-      },
-      gate: {
-        position: new THREE.Vector3(12, 8, 19),
-        look: new THREE.Vector3(0, 3, 4),
-      },
-      entrance: {
-        position: new THREE.Vector3(3.2, 5.2, 10.5),
-        look: new THREE.Vector3(0, 4.2, 0),
-      },
-      interior: {
-        0: {
-          stairsLow: {
-            position: new THREE.Vector3(18, 15, 22),
-            look: new THREE.Vector3(-6.2, 0, 0),
-          },
-          stairsHigh: {
-            position: new THREE.Vector3(17, 13.5, 19),
-            look: new THREE.Vector3(-2.5, 0, 0.5),
-          },
-          stairs: {
-            position: new THREE.Vector3(18, 15, 22),
-            look: new THREE.Vector3(-6.2, 0, 0),
-          },
-          corridor: {
-            position: new THREE.Vector3(17, 13, 21),
-            look: new THREE.Vector3(0, 0, 0),
-          },
-          destination: {
-            position: new THREE.Vector3(13, 10, 17),
-            look: new THREE.Vector3(1.5, 0, 0),
-          },
-        },
-        1: {
-          stairsLow: {
-            position: new THREE.Vector3(18, 15, 22),
-            look: new THREE.Vector3(-6.2, 3.15, 0),
-          },
-          stairsHigh: {
-            position: new THREE.Vector3(17, 13.5, 19),
-            look: new THREE.Vector3(-2.5, 3.15, 0.5),
-          },
-          stairs: {
-            position: new THREE.Vector3(18, 15, 22),
-            look: new THREE.Vector3(-6.2, 3.15, 0),
-          },
-          corridor: {
-            position: new THREE.Vector3(17, 13, 21),
-            look: new THREE.Vector3(0, 3.15, 0),
-          },
-          destination: {
-            position: new THREE.Vector3(13, 10, 17),
-            look: new THREE.Vector3(1.5, 3.15, 0),
-          },
-        },
-        2: {
-          stairsLow: {
-            position: new THREE.Vector3(18, 15, 22),
-            look: new THREE.Vector3(-6.2, 6.3, 0),
-          },
-          stairsHigh: {
-            position: new THREE.Vector3(17, 13.5, 19),
-            look: new THREE.Vector3(-2.5, 6.3, 0.5),
-          },
-          stairs: {
-            position: new THREE.Vector3(18, 15, 22),
-            look: new THREE.Vector3(-6.2, 6.3, 0),
-          },
-          corridor: {
-            position: new THREE.Vector3(17, 13, 21),
-            look: new THREE.Vector3(0, 6.3, 0),
-          },
-          destination: {
-            position: new THREE.Vector3(13, 10, 17),
-            look: new THREE.Vector3(1.5, 6.3, 0),
-          },
-        },
-        3: {
-          stairsLow: {
-            position: new THREE.Vector3(18, 15, 22),
-            look: new THREE.Vector3(-6.2, 9.45, 0),
-          },
-          stairsHigh: {
-            position: new THREE.Vector3(17, 13.5, 19),
-            look: new THREE.Vector3(-2.5, 9.45, 0.5),
-          },
-          stairs: {
-            position: new THREE.Vector3(18, 15, 22),
-            look: new THREE.Vector3(-6.2, 9.45, 0),
-          },
-          corridor: {
-            position: new THREE.Vector3(17, 13, 21),
-            look: new THREE.Vector3(0, 9.45, 0),
-          },
-          destination: {
-            position: new THREE.Vector3(13, 10, 17),
-            look: new THREE.Vector3(1.5, 9.45, 0),
-          },
-        },
-        4: {
-          stairsLow: {
-            position: new THREE.Vector3(18, 15, 22),
-            look: new THREE.Vector3(-6.2, 12.6, 0),
-          },
-          stairsHigh: {
-            position: new THREE.Vector3(17, 13.5, 19),
-            look: new THREE.Vector3(-2.5, 12.6, 0.5),
-          },
-          stairs: {
-            position: new THREE.Vector3(18, 15, 22),
-            look: new THREE.Vector3(-6.2, 12.6, 0),
-          },
-          corridor: {
-            position: new THREE.Vector3(17, 13, 21),
-            look: new THREE.Vector3(0, 12.6, 0),
-          },
-          destination: {
-            position: new THREE.Vector3(13, 10, 17),
-            look: new THREE.Vector3(1.5, 12.6, 0),
-          },
-        },
-        5: {
-          stairsLow: {
-            position: new THREE.Vector3(18, 15, 22),
-            look: new THREE.Vector3(-6.2, 15.75, 0),
-          },
-          stairsHigh: {
-            position: new THREE.Vector3(17, 13.5, 19),
-            look: new THREE.Vector3(-2.5, 15.75, 0.5),
-          },
-          stairs: {
-            position: new THREE.Vector3(18, 15, 22),
-            look: new THREE.Vector3(-6.2, 15.75, 0),
-          },
-          corridor: {
-            position: new THREE.Vector3(17, 13, 21),
-            look: new THREE.Vector3(0, 15.75, 0),
-          },
-          destination: {
-            position: new THREE.Vector3(13, 10, 17),
-            look: new THREE.Vector3(1.5, 15.75, 0),
-          },
-        },
-      },
-    }),
-    []
+function ArchWindow({ position, scale = 1, dark = false, shutters = false }) {
+  return (
+    <group position={position} scale={scale}>
+      <mesh position={[0, 0.58, 0]}>
+        <boxGeometry args={[1.05, 1.55, 0.14]} />
+        {roundedMaterial(dark ? C.window : C.wall2)}
+      </mesh>
+      <mesh position={[0, 1.36, 0]}>
+        <cylinderGeometry args={[0.525, 0.525, 0.14, 24, 1, false, 0, Math.PI]} />
+        {roundedMaterial(dark ? C.window : C.wall2)}
+      </mesh>
+      <mesh position={[0, 0.62, 0.09]}>
+        <boxGeometry args={[0.78, 1.18, 0.06]} />
+        {roundedMaterial(dark ? C.glass : "#b9cdd0", 0.4)}
+      </mesh>
+      <mesh position={[0, 0.62, 0.13]}>
+        <boxGeometry args={[0.06, 1.15, 0.05]} />
+        {roundedMaterial(C.railing, 0.55)}
+      </mesh>
+      <mesh position={[0, 0.62, 0.13]}>
+        <boxGeometry args={[0.72, 0.05, 0.05]} />
+        {roundedMaterial(C.railing, 0.55)}
+      </mesh>
+      {shutters && (
+        <>
+          <mesh position={[-0.58, 0.62, 0.12]} rotation-y={0.08}>
+            <boxGeometry args={[0.13, 1.2, 0.28]} />
+            {roundedMaterial(C.brick)}
+          </mesh>
+          <mesh position={[0.58, 0.62, 0.12]} rotation-y={-0.08}>
+            <boxGeometry args={[0.13, 1.2, 0.28]} />
+            {roundedMaterial(C.brick)}
+          </mesh>
+        </>
+      )}
+      <mesh position={[0, 0.0, 0.12]}>
+        <boxGeometry args={[1.45, 0.12, 0.34]} />
+        {roundedMaterial(C.railing)}
+      </mesh>
+      {[-0.6, -0.3, 0, 0.3, 0.6].map((x) => (
+        <mesh key={x} position={[x, -0.42, 0.12]}>
+          <boxGeometry args={[0.035, 0.75, 0.035]} />
+          {roundedMaterial(C.railing)}
+        </mesh>
+      ))}
+    </group>
   );
+}
 
-  const destination =
-    mode === "campus"
-      ? targets.campus
-      : mode === "gate"
-      ? targets.gate
-      : mode === "entrance"
-      ? targets.entrance
-      : targets.interior[Math.min(5, Math.max(0, targetFloor))][
-          navigationPhase === "stairs"
-            ? currentStep <= 0
-              ? "stairsLow"
-              : "stairsHigh"
-            : navigationPhase
-        ] ||
-        targets.interior[Math.min(5, Math.max(0, targetFloor))].stairs;
+function Railing({ width = 10, position = [0, 0, 0], z = 0 }) {
+  const count = Math.max(5, Math.floor(width / 0.75));
+  return (
+    <group position={position}>
+      <mesh position={[0, 0, z]}>
+        <boxGeometry args={[width, 0.11, 0.11]} />
+        {roundedMaterial(C.railing, 0.6)}
+      </mesh>
+      {Array.from({ length: count }).map((_, i) => (
+        <mesh key={i} position={[-width / 2 + (i * width) / (count - 1), -0.48, z]}>
+          <boxGeometry args={[0.055, 0.95, 0.055]} />
+          {roundedMaterial(C.railing, 0.6)}
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+function Dome({ position, scale = 1 }) {
+  return (
+    <group position={position} scale={scale}>
+      <mesh>
+        <sphereGeometry args={[1.35, 28, 14, 0, Math.PI * 2, 0, Math.PI / 2]} />
+        {roundedMaterial(C.roof)}
+      </mesh>
+      <mesh position={[0, 1.22, 0]}>
+        <coneGeometry args={[0.18, 0.52, 8]} />
+        {roundedMaterial(C.brickDark)}
+      </mesh>
+    </group>
+  );
+}
+
+function Tree({ position, scale = 1 }) {
+  return (
+    <group position={position} scale={scale}>
+      <mesh position={[0, 1.1, 0]} castShadow>
+        <cylinderGeometry args={[0.18, 0.25, 2.0, 9]} />
+        {roundedMaterial("#684737")}
+      </mesh>
+      <mesh position={[0, 2.55, 0]} castShadow>
+        <sphereGeometry args={[1.15, 18, 14]} />
+        {roundedMaterial(C.green)}
+      </mesh>
+      <mesh position={[0.6, 2.85, 0.1]} scale={0.62}>
+        <sphereGeometry args={[1.0, 16, 12]} />
+        {roundedMaterial(C.green2)}
+      </mesh>
+    </group>
+  );
+}
+
+function Gate({ position, label, width = 5.5, highlighted = false }) {
+  return (
+    <group position={position}>
+      <mesh position={[-width / 2, 2.2, 0]}>
+        <boxGeometry args={[0.32, 4.4, 0.38]} />
+        {roundedMaterial(highlighted ? C.blue : C.railing)}
+      </mesh>
+      <mesh position={[width / 2, 2.2, 0]}>
+        <boxGeometry args={[0.32, 4.4, 0.38]} />
+        {roundedMaterial(highlighted ? C.blue : C.railing)}
+      </mesh>
+      <mesh position={[0, 4.3, 0]}>
+        <boxGeometry args={[width + 0.5, 0.35, 0.38]} />
+        {roundedMaterial(highlighted ? C.blue : C.railing)}
+      </mesh>
+      <Text position={[0, 4.85, 0]} fontSize={0.43} color={highlighted ? C.blue : C.text} anchorX="center">
+        {label}
+      </Text>
+    </group>
+  );
+}
+
+function Lamp({ position }) {
+  return (
+    <group position={position}>
+      <mesh position={[0, 1.55, 0]}>
+        <cylinderGeometry args={[0.045, 0.07, 3.1, 8]} />
+        {roundedMaterial(C.metal, 0.4, 0.3)}
+      </mesh>
+      <mesh position={[0, 3.0, 0]}>
+        <octahedronGeometry args={[0.25, 0]} />
+        <meshStandardMaterial color="#24272a" emissive="#f5d68b" emissiveIntensity={0.25} />
+      </mesh>
+    </group>
+  );
+}
+
+function Steps({ position = [0, 0, 0], width = 7, count = 10, depth = 0.55, direction = 1 }) {
+  return (
+    <group position={position}>
+      {Array.from({ length: count }).map((_, i) => (
+        <mesh
+          key={i}
+          position={[0, 0.12 + i * 0.14, direction * (count - 1 - i) * depth]}
+          receiveShadow
+        >
+          <boxGeometry args={[width - i * 0.08, 0.24, depth]} />
+          {roundedMaterial(i % 2 ? "#c9c0b7" : "#b8aea5")}
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+function StairFlight({ position = [0, 0, 0], rotation = 0, label = "STAIRS" }) {
+  return (
+    <group position={position} rotation-y={rotation}>
+      <Steps position={[0, 0, 0]} width={3.8} count={12} depth={0.42} direction={1} />
+      <mesh position={[0, 1.85, 5.0]}>
+        <boxGeometry args={[4.0, 0.24, 1.5]} />
+        {roundedMaterial("#aaa198")}
+      </mesh>
+      <Steps position={[0, 1.95, 5.8]} width={3.8} count={12} depth={0.42} direction={-1} />
+      <Railing width={4.2} position={[-1.85, 0.5, 2.7]} z={0} />
+      <Railing width={4.2} position={[1.85, 0.5, 2.7]} z={0} />
+      <Text position={[0, 4.05, 6.0]} fontSize={0.34} color={C.blue} anchorX="center">
+        {label}
+      </Text>
+    </group>
+  );
+}
+
+function Wing({ side = -1 }) {
+  const x = side * 11.0;
+  const width = 9.0;
+  const depth = 21.0;
+  const h = FLOORS * FLOOR_H;
+  const z = -0.4;
+  const floorBands = Array.from({ length: FLOORS + 1 });
+  const windows = Array.from({ length: FLOORS });
+
+  return (
+    <group position={[x, 0, z]}>
+      <mesh position={[0, h / 2, 0]} castShadow>
+        <boxGeometry args={[width, h, depth]} />
+        {roundedMaterial(C.wall2)}
+      </mesh>
+
+      {floorBands.map((_, i) => (
+        <mesh key={i} position={[0, i * FLOOR_H, depth / 2 + 0.1]}>
+          <boxGeometry args={[width + 0.35, 0.22, 0.38]} />
+          {roundedMaterial(i === 0 ? C.brickDark : C.brick)}
+        </mesh>
+      ))}
+
+      {windows.map((_, floor) => (
+        <group key={floor}>
+          {Array.from({ length: 5 }).map((__, i) => (
+            <ArchWindow
+              key={i}
+              position={[-3.1 + i * 1.55, floor * FLOOR_H + 1.45, depth / 2 + 0.18]}
+              scale={0.67}
+              dark={i % 3 === 0}
+              shutters
+            />
+          ))}
+          {Array.from({ length: 5 }).map((__, i) => (
+            <ArchWindow
+              key={`back-${i}`}
+              position={[-3.1 + i * 1.55, floor * FLOOR_H + 1.45, -depth / 2 - 0.18]}
+              scale={0.62}
+              dark={i % 3 === 1}
+              shutters
+            />
+          ))}
+        </group>
+      ))}
+
+      {[-width / 2 - 0.15, width / 2 + 0.15].map((xx) => (
+        <group key={xx}>
+          {Array.from({ length: FLOORS }).map((_, floor) => (
+            <Railing key={floor} width={width - 0.3} position={[xx, floor * FLOOR_H + 0.55, 0]} z={side < 0 ? 0.4 : -0.4} />
+          ))}
+        </group>
+      ))}
+
+      {/* Wing roof + parapet: intentionally broad so it reads from TOP view. */}
+      <mesh position={[0, h + 0.42, 0]} castShadow>
+        <boxGeometry args={[width + 0.8, 0.75, depth + 0.8]} />
+        {roundedMaterial(C.roof)}
+      </mesh>
+      <mesh position={[0, h + 0.92, 0]}>
+        <boxGeometry args={[width + 0.95, 0.22, depth + 0.95]} />
+        {roundedMaterial(C.brickDark)}
+      </mesh>
+
+      {/* Corner pilasters make both wings readable from side angles. */}
+      {[-width / 2 + 0.25, width / 2 - 0.25].map((xx) => (
+        <mesh key={xx} position={[xx, h / 2, depth / 2 + 0.32]}>
+          <boxGeometry args={[0.32, h + 0.1, 0.34]} />
+          {roundedMaterial(C.brickDark)}
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+function CentralBlock() {
+  const h = FLOORS * FLOOR_H;
+  return (
+    <group position={[0, 0, -6.7]}>
+      <mesh position={[0, h / 2, 0]} castShadow>
+        <boxGeometry args={[16.0, h, 7.0]} />
+        {roundedMaterial(C.wall)}
+      </mesh>
+
+      {Array.from({ length: FLOORS + 1 }).map((_, i) => (
+        <mesh key={i} position={[0, i * FLOOR_H, 3.58]}>
+          <boxGeometry args={[16.35, 0.25, 0.42]} />
+          {roundedMaterial(i === 0 ? C.brickDark : C.brick)}
+        </mesh>
+      ))}
+
+      {Array.from({ length: FLOORS }).map((_, floor) =>
+        Array.from({ length: 6 }).map((__, i) => (
+          <ArchWindow
+            key={`${floor}-${i}`}
+            position={[-6.4 + i * 2.55, floor * FLOOR_H + 1.45, 3.82]}
+            scale={0.7}
+            dark={i % 3 === 0}
+            shutters
+          />
+        ))
+      )}
+
+      <mesh position={[0, h + 0.42, 0]}>
+        <boxGeometry args={[16.6, 0.75, 7.4]} />
+        {roundedMaterial(C.roofLight)}
+      </mesh>
+
+      {/* Historic-style central tower */}
+      <group position={[0, 0, 3.5]}>
+        <mesh position={[0, 9.0, 0]} castShadow>
+          <boxGeometry args={[7.2, 18.0, 2.8]} />
+          {roundedMaterial(C.wall2)}
+        </mesh>
+        {[-2.75, 2.75].map((x) => (
+          <mesh key={x} position={[x, 9.0, 1.52]}>
+            <boxGeometry args={[0.34, 17.5, 0.34]} />
+            {roundedMaterial(C.brickDark)}
+          </mesh>
+        ))}
+        <mesh position={[0, 12.2, 1.58]}>
+          <boxGeometry args={[4.2, 7.1, 0.18]} />
+          {roundedMaterial(C.brickDark)}
+        </mesh>
+        <mesh position={[0, 12.2, 1.7]}>
+          <boxGeometry args={[3.45, 6.35, 0.08]} />
+          {roundedMaterial(C.glass, 0.32)}
+        </mesh>
+        {[-1.15, 0, 1.15].map((x) => (
+          <mesh key={x} position={[x, 12.2, 1.78]}>
+            <boxGeometry args={[0.07, 6.2, 0.07]} />
+            {roundedMaterial(C.brickDark)}
+          </mesh>
+        ))}
+        <Text position={[0, 7.55, 1.72]} fontSize={0.43} color={C.text} anchorX="center">
+          M.H. SABOO SIDDIK
+        </Text>
+        <mesh position={[0, 18.75, 0]}>
+          <boxGeometry args={[6.2, 1.0, 3.25]} />
+          {roundedMaterial(C.brickDark)}
+        </mesh>
+        <Dome position={[-2.0, 19.6, 0]} scale={0.7} />
+        <Dome position={[2.0, 19.6, 0]} scale={0.7} />
+      </group>
+    </group>
+  );
+}
+
+function MainEntrance() {
+  return (
+    <group position={[0, 0, 0.0]}>
+      <mesh position={[0, 1.8, 3.65]}>
+        <boxGeometry args={[8.2, 3.6, 1.0]} />
+        {roundedMaterial(C.wall2)}
+      </mesh>
+      <mesh position={[0, 2.4, 4.2]}>
+        <boxGeometry args={[4.0, 4.9, 0.24]} />
+        {roundedMaterial("#263b48", 0.35, 0.2)}
+      </mesh>
+      {[-1.25, 1.25].map((x) => (
+        <mesh key={x} position={[x, 2.4, 4.35]}>
+          <boxGeometry args={[0.07, 4.4, 0.07]} />
+          {roundedMaterial("#c9d2d8", 0.35, 0.3)}
+        </mesh>
+      ))}
+      <Steps position={[0, 0, 5.2]} width={7.0} count={8} depth={0.5} direction={-1} />
+      <mesh position={[0, 5.0, 4.3]}>
+        <boxGeometry args={[6.0, 0.22, 1.1]} />
+        {roundedMaterial(C.brickDark)}
+      </mesh>
+      <Text position={[0, 5.75, 4.55]} fontSize={0.46} color={C.text} anchorX="center">
+        MAIN ENTRANCE
+      </Text>
+    </group>
+  );
+}
+
+function CampusWallsAndGates({ navigationStage }) {
+  return (
+    <group>
+      {/* Perimeter walls give the campus the layered reference-model feeling. */}
+      <mesh position={[0, 1.0, 17.2]}>
+        <boxGeometry args={[50, 2.0, 0.65]} />
+        {roundedMaterial(C.stone)}
+      </mesh>
+      <mesh position={[-22.5, 1.0, 3.0]}>
+        <boxGeometry args={[0.65, 2.0, 27]} />
+        {roundedMaterial(C.stone)}
+      </mesh>
+      <mesh position={[22.5, 1.0, 3.0]}>
+        <boxGeometry args={[0.65, 2.0, 27]} />
+        {roundedMaterial(C.stone)}
+      </mesh>
+
+      <Gate position={[-13, 0, 18]} label="MAIN GATE" highlighted={navigationStage !== "campus"} />
+      <Gate position={[0, 0, 18]} label="STUDENT ENTRY" width={5.0} />
+      <Gate position={[18, 0, 10]} label="SERVICE GATE" width={4.4} />
+      <Gate position={[-22, 0, -5]} label="EXIT GATE" width={5.0} />
+
+      <Steps position={[-13, 0, 15.7]} width={6.2} count={8} depth={0.5} direction={-1} />
+      <Steps position={[-22, 0, -2.0]} width={5.0} count={12} depth={0.42} direction={1} />
+      <StairFlight position={[18, 0, 5.0]} rotation={Math.PI / 2} label="SIDE STAIRS" />
+    </group>
+  );
+}
+
+function CampusGround() {
+  return (
+    <group>
+      <mesh rotation-x={-Math.PI / 2} receiveShadow>
+        <planeGeometry args={[64, 58]} />
+        {roundedMaterial(C.ground)}
+      </mesh>
+      <mesh position={[0, 0.03, 21]} rotation-x={-Math.PI / 2}>
+        <planeGeometry args={[18, 14]} />
+        {roundedMaterial(C.road)}
+      </mesh>
+      <mesh position={[-24, 0.04, 1]} rotation-x={-Math.PI / 2}>
+        <planeGeometry args={[12, 44]} />
+        {roundedMaterial(C.road)}
+      </mesh>
+      <mesh position={[22, 0.04, 7]} rotation-x={-Math.PI / 2}>
+        <planeGeometry args={[9, 32]} />
+        {roundedMaterial(C.road)}
+      </mesh>
+      <mesh position={[0, 0.06, 7.0]} rotation-x={-Math.PI / 2}>
+        <planeGeometry args={[21, 17]} />
+        {roundedMaterial("#d5d0c8")}
+      </mesh>
+
+      {[[-18, 12], [-8, 13], [8, 13], [18, 12], [-20, 7], [20, 7], [-18, -11], [18, -11]].map(([x, z], i) => (
+        <Tree key={i} position={[x, 0, z]} scale={0.85 + (i % 2) * 0.1} />
+      ))}
+      {[[-16, 19], [-7, 19], [7, 19], [16, 19], [-24, 10], [-24, 0], [24, 12], [24, 2]].map(([x, z], i) => (
+        <Lamp key={`lamp-${i}`} position={[x, 0, z]} />
+      ))}
+    </group>
+  );
+}
+
+function ExteriorCampus({ navigationStage, currentStep }) {
+  const route = useMemo(() => {
+    if (navigationStage === "campus") return [];
+    const points = navigationStage === "stairs"
+      ? STAIR_NAV_PATH
+      : EXTERIOR_NAV_PATH;
+    return points.map(([x, y, z]) => [x, y + 0.05, z]);
+  }, [navigationStage, currentStep]);
+
+  return (
+    <group>
+      <CampusGround />
+      <CampusWallsAndGates navigationStage={navigationStage} />
+      <Wing side={-1} />
+      <Wing side={1} />
+      <CentralBlock />
+      <MainEntrance />
+
+      {/* Courtyard furniture */}
+      <mesh position={[0, 0.12, 7.2]} rotation-x={-Math.PI / 2}>
+        <circleGeometry args={[3.0, 48]} />
+        {roundedMaterial("#bbb2aa")}
+      </mesh>
+      <Tree position={[0, 0.2, 7.2]} scale={0.8} />
+
+      <mesh position={[0, 0.12, 11.8]}>
+        <boxGeometry args={[14, 0.18, 0.6]} />
+        {roundedMaterial(C.brickDark)}
+      </mesh>
+
+      <Text position={[0, 0.22, 15.3]} fontSize={0.42} color="#7b746e" anchorX="center">
+        M.H. SABOO SIDDIK COLLEGE CAMPUS
+      </Text>
+
+      {route.length > 1 && (
+        <>
+          <Line points={route} color={C.blue} lineWidth={5} />
+          {route.slice(1).map((p, i) => (
+            <mesh key={i} position={[p[0], 0.28, p[2]]} rotation-x={-Math.PI / 2}>
+              <circleGeometry args={[0.22, 24]} />
+              <meshBasicMaterial color={C.blue} />
+            </mesh>
+          ))}
+        </>
+      )}
+
+      {navigationStage === "campus" && (
+        <YouMarker position={[-13, 0.3, 21.5]} />
+      )}
+    </group>
+  );
+}
+
+function YouMarker({ position }) {
+  const ref = useRef();
+  useFrame(({ clock }) => {
+    if (ref.current) ref.current.scale.setScalar(1 + Math.sin(clock.elapsedTime * 4) * 0.08);
+  });
+  return (
+    <group ref={ref} position={position}>
+      <mesh rotation-x={-Math.PI / 2}>
+        <circleGeometry args={[1.0, 32]} />
+        <meshBasicMaterial color={C.blue} transparent opacity={0.17} />
+      </mesh>
+      <Html center position={[0, 0.95, 0]} distanceFactor={11}>
+        <div style={{
+          width: 44,
+          height: 44,
+          borderRadius: "50%",
+          background: C.white,
+          border: `3px solid ${C.blue}`,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 26,
+          lineHeight: 1,
+          boxShadow: "0 6px 20px rgba(47,111,237,.25)"
+        }}>
+          👨🏻‍🎓
+        </div>
+      </Html>
+      <Html center position={[0, 1.65, 0]}>
+        <div style={{ background: C.white, border: `2px solid ${C.blue}`, color: C.blue, borderRadius: 999, padding: "6px 10px", font: "800 11px Inter, sans-serif", whiteSpace: "nowrap", boxShadow: "0 6px 20px rgba(0,0,0,.14)" }}>
+          YOU ARE HERE
+        </div>
+      </Html>
+    </group>
+  );
+}
+
+function RoomFurniture({ type }) {
+  if (type === "lab") {
+    return (
+      <group>
+        {Array.from({ length: 6 }).map((_, i) => {
+          const x = -1.9 + (i % 3) * 1.9;
+          const z = -0.55 + Math.floor(i / 3) * 1.25;
+          return (
+            <group key={i} position={[x, 0.42, z]}>
+              <mesh>
+                <boxGeometry args={[1.35, 0.15, 0.65]} />
+                {roundedMaterial("#b6a79a")}
+              </mesh>
+              <mesh position={[0, 0.35, 0]}>
+                <boxGeometry args={[0.75, 0.42, 0.07]} />
+                {roundedMaterial("#596b78")}
+              </mesh>
+            </group>
+          );
+        })}
+      </group>
+    );
+  }
+  if (type === "class" || type === "hall") {
+    return (
+      <group>
+        <mesh position={[0, 0.75, -1.0]}>
+          <boxGeometry args={[4.1, 1.25, 0.12]} />
+          {roundedMaterial("#e7e0d8")}
+        </mesh>
+        {Array.from({ length: 6 }).map((_, i) => (
+          <mesh key={i} position={[-1.8 + (i % 3) * 1.8, 0.35, 0.3 + Math.floor(i / 3) * 1.1]}>
+            <boxGeometry args={[1.25, 0.14, 0.6]} />
+            {roundedMaterial("#aa9c90")}
+          </mesh>
+        ))}
+      </group>
+    );
+  }
+  return null;
+}
+
+function CutawayRoom({ room, active, onSelect }) {
+  const [label, x, z, width, type] = room;
+  return (
+    <group
+      position={[x, 0, z]}
+      onClick={(e) => { e.stopPropagation(); onSelect(label); }}
+      onPointerOver={(e) => { e.stopPropagation(); document.body.style.cursor = "pointer"; }}
+      onPointerOut={() => { document.body.style.cursor = "default"; }}
+    >
+      <mesh position={[0, 1.35, 0]} castShadow>
+        <boxGeometry args={[width, 2.7, 3.0]} />
+        {roundedMaterial(active ? "#dbe9ff" : "#eee6dc")}
+      </mesh>
+      <mesh position={[0, 1.35, 1.53]}>
+        <boxGeometry args={[Math.min(width - 0.5, 3.8), 1.55, 0.08]} />
+        {roundedMaterial(active ? C.blue : C.glass, 0.35)}
+      </mesh>
+      <mesh position={[0, 0.95, 1.62]}>
+        <boxGeometry args={[0.95, 1.85, 0.1]} />
+        {roundedMaterial(active ? C.blue2 : C.wood)}
+      </mesh>
+      <Text position={[0, 2.9, 1.7]} fontSize={0.27} color={C.text} anchorX="center" maxWidth={width - 0.2}>
+        {label}
+      </Text>
+      <RoomFurniture type={type} />
+    </group>
+  );
+}
+
+function IndoorStairs({ x = -11.0, z = 1.8 }) {
+  return (
+    <group position={[x, 0, z]}>
+      <Steps width={3.2} count={11} depth={0.42} direction={1} />
+      <mesh position={[0, 1.7, 4.8]}>
+        <boxGeometry args={[3.4, 0.25, 1.3]} />
+        {roundedMaterial("#aaa198")}
+      </mesh>
+      <Steps position={[0, 1.82, 5.4]} width={3.2} count={11} depth={0.42} direction={-1} />
+      <Railing width={3.5} position={[-1.6, 0.65, 2.5]} />
+      <Railing width={3.5} position={[1.6, 0.65, 2.5]} />
+      <Html center position={[0, 3.7, 5.9]}>
+        <div style={{ background: C.white, border: `2px solid ${C.blue}`, color: C.blue, borderRadius: 999, padding: "6px 10px", font: "800 11px Inter, sans-serif", whiteSpace: "nowrap", boxShadow: "0 5px 18px rgba(0,0,0,.12)" }}>
+          STAIRS • GO TO NEXT FLOOR
+        </div>
+      </Html>
+    </group>
+  );
+}
+
+function Lift({ position, label }) {
+  return (
+    <group position={position}>
+      <mesh>
+        <boxGeometry args={[2.0, 2.7, 1.8]} />
+        {roundedMaterial("#d5d9dd", 0.4)}
+      </mesh>
+      <mesh position={[0, 0, 0.93]}>
+        <boxGeometry args={[1.45, 1.9, 0.08]} />
+        {roundedMaterial("#52616b", 0.3, 0.15)}
+      </mesh>
+      <Text position={[0, 1.55, 1.05]} fontSize={0.24} color={C.text} anchorX="center">
+        {label}
+      </Text>
+    </group>
+  );
+}
+
+function FloorInterior({ floor, destination, currentStep, selectedRoom, onRoomSelect, showRoute = true }) {
+  const target = getTarget(destination);
+  const rooms = FLOOR_ROOMS[floor] || FLOOR_ROOMS[2];
+  const routeTarget = rooms.find((r) => r[0] === target.room) || rooms[0];
+  const routeX = routeTarget?.[1] ?? target.x;
+  const routeZ = routeTarget?.[2] ?? target.z;
+  const route = [
+    [-12.5, 0.22, 0.9],
+    [-7.0, 0.22, 0.9],
+    [0, 0.22, 0.9],
+    [6.0, 0.22, 0.9],
+    [routeX, 0.22, routeZ],
+  ];
+
+  return (
+    <group position={[0, floor * FLOOR_H, 0]}>
+      {/* Floor slab */}
+      <mesh position={[0, -0.35, 0]} receiveShadow>
+        <boxGeometry args={[30, 0.7, 18]} />
+        {roundedMaterial("#d3cec6")}
+      </mesh>
+
+      {/* Open cutaway walls: back + side walls, front left open for navigation visibility. */}
+      <mesh position={[0, 1.55, -8.45]}>
+        <boxGeometry args={[29, 3.1, 0.32]} />
+        {roundedMaterial(C.wall2)}
+      </mesh>
+      <mesh position={[-14.45, 1.55, 0]}>
+        <boxGeometry args={[0.32, 3.1, 16.8]} />
+        {roundedMaterial(C.wall2)}
+      </mesh>
+      <mesh position={[14.45, 1.55, 0]}>
+        <boxGeometry args={[0.32, 3.1, 16.8]} />
+        {roundedMaterial(C.wall2)}
+      </mesh>
+
+      {/* Corridor */}
+      <mesh position={[0, 0.08, 0.9]}>
+        <boxGeometry args={[25.6, 0.13, 4.5]} />
+        {roundedMaterial("#bbb2aa")}
+      </mesh>
+      <Line points={[[-12.8, 0.17, -1.35], [12.8, 0.17, -1.35]]} color="#9f958c" lineWidth={2} />
+      <Line points={[[-12.8, 0.17, 3.15], [12.8, 0.17, 3.15]]} color="#9f958c" lineWidth={2} />
+
+      {/* Ceiling beams/lights are visible when the user rotates the cutaway view. */}
+      {Array.from({ length: 8 }).map((_, i) => (
+        <group key={i} position={[-10.5 + i * 3, 2.75, 0.9]}>
+          <mesh>
+            <boxGeometry args={[0.14, 0.12, 4.2]} />
+            {roundedMaterial("#b7aea5")}
+          </mesh>
+          <mesh position={[0, 0.02, 0]}>
+            <boxGeometry args={[0.6, 0.07, 1.0]} />
+            <meshStandardMaterial color="#fff2bf" emissive="#ffe9a4" emissiveIntensity={0.25} />
+          </mesh>
+        </group>
+      ))}
+
+      {/* Doors and notice boards */}
+      {Array.from({ length: 7 }).map((_, i) => (
+        <mesh key={i} position={[-10.5 + i * 3.5, 1.0, -1.58]}>
+          <boxGeometry args={[1.25, 2.0, 0.12]} />
+          {roundedMaterial(C.wood)}
+        </mesh>
+      ))}
+      {[-9.0, -3.0, 3.0, 9.0].map((x, i) => (
+        <group key={i} position={[x, 1.45, 3.08]}>
+          <mesh>
+            <boxGeometry args={[1.6, 0.85, 0.06]} />
+            {roundedMaterial("#f2eee8")}
+          </mesh>
+          <Text position={[0, 0, 0.05]} fontSize={0.16} color="#59636d" anchorX="center">
+            {i % 2 ? "DEPARTMENT" : "NOTICE BOARD"}
+          </Text>
+        </group>
+      ))}
+
+      {/* Stairs are always visible in the floor map — not temporary navigation geometry. */}
+      <IndoorStairs x={-11.4} z={0.9} />
+      <Lift position={[-6.7, 0, 5.0]} label="STUDENT LIFT" />
+      <Lift position={[-3.9, 0, 5.0]} label="STAFF LIFT" />
+
+      {rooms.map((room) => (
+        <CutawayRoom
+          key={room[0]}
+          room={room}
+          active={selectedRoom === room[0] || (currentStep >= 3 && target.room === room[0])}
+          onSelect={onRoomSelect}
+        />
+      ))}
+
+      {/* Washrooms — positioned separately so they remain visible and clickable-looking. */}
+      <group position={[11.0, 0, 5.0]}>
+        <mesh position={[0, 1.15, 0]}>
+          <boxGeometry args={[2.5, 2.3, 2.3]} />
+          {roundedMaterial("#e8eef1")}
+        </mesh>
+        <Text position={[0, 1.2, 1.2]} fontSize={0.26} color={C.text} anchorX="center">{floor % 2 ? "LADIES" : "GENTS"}</Text>
+      </group>
+
+      {/* Blue navigation path: this is the missing visual connection between HERE and CLASSROOM/LAB. */}
+      {showRoute && (
+        <>
+          <Line points={route} color={C.blue} lineWidth={5} />
+          {route.slice(1, -1).map((p, i) => (
+            <group key={i} position={[p[0], 0.31, p[2]]}>
+              <mesh rotation-x={-Math.PI / 2}>
+                <coneGeometry args={[0.24, 0.6, 3]} />
+                <meshBasicMaterial color={C.blue} />
+              </mesh>
+            </group>
+          ))}
+          <group position={[routeX, 0.35, routeZ]}>
+            <mesh rotation-x={-Math.PI / 2}>
+              <ringGeometry args={[0.5, 0.78, 32]} />
+              <meshBasicMaterial color={C.red} />
+            </mesh>
+            <mesh position={[0, 0.45, 0]}>
+              <coneGeometry args={[0.28, 0.8, 18]} />
+              <meshBasicMaterial color={C.red} />
+            </mesh>
+            <Html center position={[0, 1.45, 0]}>
+              <div style={{ background: C.red, color: "#fff", borderRadius: 999, padding: "7px 11px", font: "800 11px Inter, sans-serif", whiteSpace: "nowrap", boxShadow: "0 7px 22px rgba(220,76,76,.28)" }}>
+                DESTINATION • {target.room}
+              </div>
+            </Html>
+          </group>
+        </>
+      )}
+
+      <Html position={[0, 3.5, -6.9]} center>
+        <div style={{ background: "rgba(255,255,255,.96)", borderRadius: 13, padding: "8px 14px", color: C.text, font: "800 12px Inter, sans-serif", boxShadow: "0 8px 24px rgba(0,0,0,.12)", whiteSpace: "nowrap" }}>
+          FLOOR {floor === 0 ? "GROUND" : floor} • ROOMS • CORRIDOR • STAIRS • LIFTS
+        </div>
+      </Html>
+    </group>
+  );
+}
+
+
+function samplePath(points, t) {
+  if (!points.length) return new THREE.Vector3();
+  if (points.length === 1) return new THREE.Vector3(...points[0]);
+  const scaled = THREE.MathUtils.clamp(t, 0, 1) * (points.length - 1);
+  const i = Math.min(points.length - 2, Math.floor(scaled));
+  const local = scaled - i;
+  return new THREE.Vector3(...points[i]).lerp(new THREE.Vector3(...points[i + 1]), local);
+}
+
+const EXTERIOR_NAV_PATH = [
+  // Approach the real-looking main gate first.
+  [-13, 1.2, 23.5],
+  [-13, 1.6, 21.0],
+  [-13, 1.7, 19.0],
+  [-13, 1.65, 17.2],
+  // Stop at the top of the visible entrance stair flight.
+  [-13, 1.25, 15.85],
+];
+
+// The navigation camera deliberately follows the individual stair levels so the
+// user can SEE the character/camera coming down the steps instead of teleporting.
+const STAIR_NAV_PATH = [
+  [-13, 1.18, 15.85],
+  [-13, 1.04, 15.42],
+  [-13, 0.90, 14.99],
+  [-13, 0.76, 14.56],
+  [-13, 0.62, 14.13],
+  [-13, 0.48, 13.70],
+  [-13, 0.34, 13.27],
+  [-13, 0.22, 12.84],
+  [-13, 0.18, 12.35],
+  // Bottom landing and the path toward the central entrance.
+  [-12.0, 0.18, 11.65],
+  [-9.5, 0.18, 10.55],
+  [-6.0, 0.18, 9.05],
+  [-2.5, 0.18, 7.85],
+  [0, 0.18, 6.9],
+  [0, 0.18, 5.2],
+  [0, 0.18, 3.7],
+];
+
+
+function StudentAvatar({ moving = false }) {
+  return (
+    <div style={{
+      width: moving ? 46 : 50,
+      height: moving ? 46 : 50,
+      borderRadius: "50%",
+      background: "#1f6feb",
+      border: "3px solid #ffffff",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontSize: moving ? 27 : 29,
+      lineHeight: 1,
+      boxShadow: "0 7px 22px rgba(31,111,235,.35)",
+      userSelect: "none",
+    }}>
+      👨🏻‍🎓
+    </div>
+  );
+}
+
+function NavigationCameraMotion({ stage, floor, destination, currentStep, controlsRef, onFinish }) {
+  const { camera } = useThree();
+  const [progress, setProgress] = useState(0);
+  const lastStage = useRef(stage);
+  const startedAt = useRef(null);
+  const finished = useRef(false);
+  const target = getTarget(destination);
+
+  const room = FLOOR_ROOMS[target.floor]?.find((r) => r[0] === target.room);
+  const routeX = room?.[1] ?? target.x;
+  const routeZ = room?.[2] ?? target.z;
+  const interiorPath = useMemo(() => [
+    [-11.4, 0.9],
+    [-9.0, 0.9],
+    [-5.0, 0.9],
+    [0, 0.9],
+    [5.0, 0.9],
+    [routeX, routeZ],
+  ], [routeX, routeZ]);
+
+  useEffect(() => {
+    if (stage !== lastStage.current) {
+      startedAt.current = performance.now();
+      setProgress(0);
+      finished.current = false;
+      lastStage.current = stage;
+    }
+  }, [stage]);
 
   useFrame((_, delta) => {
-    const speed = mode === "campus" ? 4.5 : 2.5;
+    if (stage !== "route" && stage !== "stairs" && stage !== "interiorWalk") return;
 
-    camera.position.lerp(destination.position, 1 - Math.exp(-speed * delta));
+    if (startedAt.current == null) startedAt.current = performance.now();
 
+    const duration = stage === "route" ? 5600 : stage === "stairs" ? 5200 : 6500;
+    const elapsed = performance.now() - startedAt.current;
+    const raw = THREE.MathUtils.clamp(elapsed / duration, 0, 1);
+    const eased = 1 - Math.pow(1 - raw, 3);
+    setProgress(eased);
+
+    if (stage === "route") {
+      const p = samplePath(EXTERIOR_NAV_PATH, eased);
+      const next = samplePath(EXTERIOR_NAV_PATH, Math.min(1, eased + 0.045));
+      const forward = next.clone().sub(p).normalize();
+      camera.position.lerp(new THREE.Vector3(p.x, p.y + 3.4, p.z + 5.2), 0.16);
+      camera.lookAt(p.x + forward.x * 4.5, p.y + 0.4, p.z + forward.z * 4.5);
+      if (controlsRef.current) {
+        controlsRef.current.target.set(p.x + forward.x * 4.5, p.y + 0.4, p.z + forward.z * 4.5);
+      }
+    } else if (stage === "stairs") {
+      const p = samplePath(STAIR_NAV_PATH, eased);
+      const next = samplePath(STAIR_NAV_PATH, Math.min(1, eased + 0.035));
+      const forward = next.clone().sub(p).normalize();
+      // Lower the camera with each stair step. This is the important visual
+      // transition: the user visibly descends the stair flight and then walks
+      // across the landing toward the college entrance.
+      camera.position.lerp(new THREE.Vector3(p.x, p.y + 2.25, p.z + 3.0), 0.22);
+      camera.lookAt(p.x + forward.x * 3.2, p.y + 0.35, p.z + forward.z * 3.2);
+      if (controlsRef.current) {
+        controlsRef.current.target.set(p.x + forward.x * 3.2, p.y + 0.35, p.z + forward.z * 3.2);
+      }
+    } else {
+      const scaled = eased * (interiorPath.length - 1);
+      const i = Math.min(interiorPath.length - 2, Math.floor(scaled));
+      const local = scaled - i;
+      const a = interiorPath[i];
+      const b = interiorPath[i + 1];
+      const x = THREE.MathUtils.lerp(a[0], b[0], local);
+      const z = THREE.MathUtils.lerp(a[1], b[1], local);
+      const nx = b[0] - a[0];
+      const nz = b[1] - a[1];
+      const len = Math.max(0.001, Math.hypot(nx, nz));
+      const fx = nx / len;
+      const fz = nz / len;
+      const y = floor * FLOOR_H + 0.15;
+      camera.position.lerp(new THREE.Vector3(x, y + 3.0, z + 5.4), 0.18);
+      camera.lookAt(x + fx * 3.8, y + 0.7, z + fz * 3.8);
+      if (controlsRef.current) {
+        controlsRef.current.target.set(x + fx * 3.8, y + 0.7, z + fz * 3.8);
+      }
+    }
+
+    if (raw >= 1 && !finished.current) {
+      finished.current = true;
+      onFinish?.();
+    }
+  });
+
+  // The avatar uses THIS SAME progress value and THIS SAME path as the camera.
+  // There is intentionally no second timer/component for the moving user marker.
+  let travelerPoint;
+  if (stage === "route") {
+    travelerPoint = samplePath(EXTERIOR_NAV_PATH, progress);
+  } else if (stage === "stairs") {
+    travelerPoint = samplePath(STAIR_NAV_PATH, progress);
+  } else if (stage === "interiorWalk") {
+    const p = samplePath(interiorPath.map(([x, z]) => [x, floor * FLOOR_H + 0.35, z]), progress);
+    travelerPoint = p;
+  }
+
+  return <>
+    {travelerPoint && (
+      <group position={[travelerPoint.x, travelerPoint.y + 0.3, travelerPoint.z]}>
+        <mesh rotation-x={-Math.PI / 2}>
+          <circleGeometry args={[0.9, 40]} />
+          <meshBasicMaterial color={C.blue} transparent opacity={0.16} />
+        </mesh>
+        <Html center position={[0, 1.05, 0]} distanceFactor={10}>
+          <StudentAvatar moving />
+        </Html>
+        <Html center position={[0, 1.85, 0]}>
+          <div style={{
+            background: C.blue,
+            color: "#fff",
+            borderRadius: 999,
+            padding: "5px 9px",
+            font: "800 10px Inter, sans-serif",
+            whiteSpace: "nowrap",
+            boxShadow: "0 5px 18px rgba(47,111,237,.3)"
+          }}>
+            YOU
+          </div>
+        </Html>
+      </group>
+    )}
+
+    <Html fullscreen>
+    <div style={{ position: "absolute", left: 16, right: 16, bottom: 16, pointerEvents: "none", fontFamily: "Inter, Arial, sans-serif" }}>
+      <div style={{ maxWidth: 430, background: "rgba(255,255,255,.96)", borderRadius: 16, padding: "11px 13px", boxShadow: "0 12px 32px rgba(0,0,0,.16)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div>
+            <div style={{ color: C.blue, fontSize: 10, fontWeight: 900, letterSpacing: ".08em" }}>
+              {stage === "route" ? "LIVE ROUTE PREVIEW" : stage === "stairs" ? "STAIR DESCENT" : "INDOOR WALKTHROUGH"}
+            </div>
+            <div style={{ color: C.text, fontSize: 14, fontWeight: 900, marginTop: 2 }}>
+              {stage === "route" ? "You are here → Main Gate → Stairs" : stage === "stairs" ? "Walk down the entrance stairs → College" : `${destination} • Follow the blue path`}
+            </div>
+          </div>
+          <div style={{ color: C.blue, fontSize: 12, fontWeight: 900 }}>{Math.round(progress * 100)}%</div>
+        </div>
+        <div style={{ height: 5, marginTop: 8, borderRadius: 999, background: "#e7edf5", overflow: "hidden" }}>
+          <div style={{ width: `${Math.max(3, progress * 100)}%`, height: "100%", background: C.blue, borderRadius: 999 }} />
+        </div>
+      </div>
+    </div>
+  </Html>
+  </>;
+}
+
+function CameraRig({ stage, floor, view, controlsRef, autoMotion = false }) {
+  const { camera } = useThree();
+  const internal = useRef();
+  const controls = controlsRef || internal;
+
+  // Two complete preset sets:
+  // 1) Campus exterior views
+  // 2) Floor/interior views
+  // The same buttons can therefore be used before and after entering a floor.
+  const campusTargets = useMemo(() => ({
+    campus: { p: new THREE.Vector3(31, 27, 35), t: new THREE.Vector3(0, 6, 1) },
+    top: { p: new THREE.Vector3(0, 45, 0.01), t: new THREE.Vector3(0, 0, 0) },
+    front: { p: new THREE.Vector3(0, 10, 36), t: new THREE.Vector3(0, 8, -2) },
+    left: { p: new THREE.Vector3(-35, 11, 10), t: new THREE.Vector3(-3, 8, -2) },
+    right: { p: new THREE.Vector3(35, 11, 10), t: new THREE.Vector3(3, 8, -2) },
+    rear: { p: new THREE.Vector3(0, 13, -34), t: new THREE.Vector3(0, 8, -4) },
+    low: { p: new THREE.Vector3(0, 4.8, 31), t: new THREE.Vector3(0, 8, -3) },
+  }), []);
+
+  const interiorTargets = useMemo(() => {
+    const y = floor * FLOOR_H;
+    return {
+      campus: {
+        p: new THREE.Vector3(18, y + 12, 20),
+        t: new THREE.Vector3(0, y + 1, 0),
+      },
+      top: {
+        p: new THREE.Vector3(0, y + 19, 0.01),
+        t: new THREE.Vector3(0, y, 0),
+      },
+      front: {
+        p: new THREE.Vector3(0, y + 7.0, 16.5),
+        t: new THREE.Vector3(0, y + 1.1, 0.5),
+      },
+      left: {
+        p: new THREE.Vector3(-17, y + 6.5, 3),
+        t: new THREE.Vector3(-1.5, y + 1.0, 0),
+      },
+      right: {
+        p: new THREE.Vector3(17, y + 6.5, 3),
+        t: new THREE.Vector3(1.5, y + 1.0, 0),
+      },
+      rear: {
+        p: new THREE.Vector3(0, y + 7.0, -16.5),
+        t: new THREE.Vector3(0, y + 1.1, 0),
+      },
+      low: {
+        p: new THREE.Vector3(0, y + 3.2, 14.5),
+        t: new THREE.Vector3(0, y + 1.0, 0),
+      },
+    };
+  }, [floor]);
+
+  useEffect(() => {
+    // During automatic navigation the navigation camera owns the camera.
+    if (stage === "route" || stage === "stairs" || stage === "interiorWalk") return;
+
+    const isInterior = stage === "interior";
+    const targets = isInterior ? interiorTargets : campusTargets;
+    const key = stage === "start" ? "front" : stage === "entering" ? "low" : view;
+    const preset = targets[key] || targets.campus;
+
+    camera.position.copy(preset.p);
     if (controls.current) {
-      controls.current.target.lerp(
-        destination.look,
-        1 - Math.exp(-speed * delta)
-      );
+      controls.current.target.copy(preset.t);
       controls.current.update();
     }
+    camera.updateProjectionMatrix();
+  }, [stage, floor, view, camera, controls, campusTargets, interiorTargets]);
 
-    const distance = camera.position.distanceTo(destination.position);
-
-    if (mode !== "campus" && distance < 0.22 && onArrive) {
-      onArrive();
-    }
+  useFrame(() => {
+    if (controls.current) controls.current.update();
   });
 
   return (
@@ -251,1558 +1169,250 @@ function SmoothCamera({ mode, targetFloor = 2, navigationPhase = "stairs", curre
       ref={controls}
       enablePan
       enableDamping
-      dampingFactor={0.08}
-      minDistance={5}
-      maxDistance={65}
-      maxPolarAngle={Math.PI * 0.48}
+      dampingFactor={0.075}
+      minDistance={1.8}
+      maxDistance={85}
+      minPolarAngle={0.05}
+      maxPolarAngle={Math.PI * 0.49}
+      rotateSpeed={0.7}
+      zoomSpeed={0.8}
+      panSpeed={0.8}
+      // Mouse interaction is available whenever automatic navigation is not running.
+      // Left drag = orbit, wheel = zoom, right/middle drag = pan.
+      enabled={!autoMotion}
     />
   );
 }
 
-function Ground() {
-  return (
-    <>
-      <mesh rotation-x={-Math.PI / 2} receiveShadow>
-        <planeGeometry args={[70, 62]} />
-        <meshStandardMaterial color={C.ground} />
-      </mesh>
-
-      {/* Main approach road */}
-      <mesh position={[0, 0.03, 16]} rotation-x={-Math.PI / 2}>
-        <planeGeometry args={[10, 32]} />
-        <meshStandardMaterial color={C.road} />
-      </mesh>
-
-      {/* Courtyard road */}
-      <mesh position={[0, 0.035, 1]} rotation-x={-Math.PI / 2}>
-        <planeGeometry args={[24, 9]} />
-        <meshStandardMaterial color={C.road} />
-      </mesh>
-
-      {/* Exit-side path */}
-      <mesh position={[-17, 0.04, 2]} rotation-x={-Math.PI / 2}>
-        <planeGeometry args={[20, 5]} />
-        <meshStandardMaterial color={C.road} />
-      </mesh>
-    </>
-  );
-}
-
-function Tree({ position, scale = 1 }) {
-  return (
-    <group position={position} scale={scale}>
-      <mesh position={[0, 1.3, 0]} castShadow>
-        <cylinderGeometry args={[0.22, 0.28, 2.2, 8]} />
-        <meshStandardMaterial color="#684638" />
-      </mesh>
-      <mesh position={[0, 2.8, 0]} castShadow>
-        <sphereGeometry args={[1.25, 16, 12]} />
-        <meshStandardMaterial color={C.greenDark} />
-      </mesh>
-      <mesh position={[0.65, 3.1, 0.15]} scale={0.7} castShadow>
-        <sphereGeometry args={[1.05, 16, 12]} />
-        <meshStandardMaterial color={C.greenery} />
-      </mesh>
-    </group>
-  );
-}
-
-function ArchWindow({ position, scale = 1, dark = false }) {
-  return (
-    <group position={position} scale={scale}>
-      <mesh>
-        <boxGeometry args={[1.0, 1.45, 0.12]} />
-        <meshStandardMaterial color={dark ? C.window : C.arch} />
-      </mesh>
-      <mesh position={[0, 0.72, 0]}>
-        <cylinderGeometry args={[0.5, 0.5, 0.12, 24, 1, false, 0, Math.PI]} />
-        <meshStandardMaterial color={dark ? C.window : C.arch} />
-      </mesh>
-      <mesh position={[-0.38, 0, 0.08]}>
-        <boxGeometry args={[0.06, 1.2, 0.05]} />
-        <meshStandardMaterial color={C.trim} />
-      </mesh>
-      <mesh position={[0.38, 0, 0.08]}>
-        <boxGeometry args={[0.06, 1.2, 0.05]} />
-        <meshStandardMaterial color={C.trim} />
-      </mesh>
-    </group>
-  );
-}
-
-function VerticalColumn({ position, height = 12 }) {
-  return (
-    <mesh position={position} castShadow>
-      <boxGeometry args={[0.34, height, 0.42]} />
-      <meshStandardMaterial color={C.trimDark} />
-    </mesh>
-  );
-}
-
-function Dome({ position, scale = 1 }) {
-  return (
-    <group position={position} scale={scale}>
-      <mesh castShadow>
-        <sphereGeometry args={[1.25, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2]} />
-        <meshStandardMaterial color={C.trim} />
-      </mesh>
-      <mesh position={[0, 1.15, 0]}>
-        <coneGeometry args={[0.18, 0.55, 8]} />
-        <meshStandardMaterial color={C.trimDark} />
-      </mesh>
-    </group>
-  );
-}
-
-function GalleryRail({ position, width = 8, z = 0 }) {
-  return (
-    <group position={[position[0], position[1], position[2]]}>
-      <mesh position={[0, 0.05, z]}>
-        <boxGeometry args={[width, 0.12, 0.12]} />
-        <meshStandardMaterial color={C.trimDark} />
-      </mesh>
-      {Array.from({ length: Math.max(3, Math.floor(width / 1.1)) }).map((_, i) => (
-        <mesh key={i} position={[-width / 2 + (i * width) / (Math.max(3, Math.floor(width / 1.1)) - 1), -0.48, z]}>
-          <boxGeometry args={[0.08, 1.0, 0.08]} />
-          <meshStandardMaterial color={C.trimDark} />
-        </mesh>
-      ))}
-    </group>
-  );
-}
-
-function Wing({ position, width = 16, depth = 7, floors = 5, rotate = 0 }) {
-  const floorHeight = 3.15;
-  const totalHeight = floors * floorHeight;
-  const sideCols = Math.max(5, Math.floor(depth / 1.9));
-  const endCols = Math.max(3, Math.floor(width / 2.0));
-
-  return (
-    <group position={position} rotation-y={rotate}>
-      {/* Structural shell broken into floor bands so it reads as architecture, not a single block. */}
-      <mesh position={[0, totalHeight / 2, 0]} castShadow receiveShadow>
-        <boxGeometry args={[width, totalHeight, depth]} />
-        <meshStandardMaterial color={C.facadeLight} />
-      </mesh>
-
-      {Array.from({ length: floors + 1 }).map((_, i) => (
-        <mesh key={`band-${i}`} position={[0, i * floorHeight, 0]}>
-          <boxGeometry args={[width + 0.45, 0.18, depth + 0.35]} />
-          <meshStandardMaterial color={i === 0 ? C.trimDark : C.trim} />
-        </mesh>
-      ))}
-
-      {/* Long gallery sides */}
-      {[-width / 2 - 0.04, width / 2 + 0.04].map((x) => (
-        <group key={`gallery-side-${x}`}>
-          {Array.from({ length: floors }).map((_, floor) => (
-            <group key={floor} position={[x, floor * floorHeight + 0.78, 0]}>
-              <mesh position={[0, 0, 0]}>
-                <boxGeometry args={[0.22, 0.18, depth - 0.5]} />
-                <meshStandardMaterial color={C.trimDark} />
-              </mesh>
-              {Array.from({ length: sideCols }).map((__, i) => (
-                <mesh key={i} position={[0, -0.45, -depth / 2 + 0.55 + (i * (depth - 1.1)) / (sideCols - 1)]}>
-                  <boxGeometry args={[0.10, 0.95, 0.10]} />
-                  <meshStandardMaterial color={C.trimDark} />
-                </mesh>
-              ))}
-            </group>
-          ))}
-        </group>
-      ))}
-
-      {/* Windows along both long sides */}
-      {[-width / 2 - 0.16, width / 2 + 0.16].map((x, side) =>
-        Array.from({ length: floors }).map((_, floor) =>
-          Array.from({ length: sideCols - 1 }).map((__, col) => (
-            <group key={`side-window-${side}-${floor}-${col}`} position={[x, floor * floorHeight + 1.65, -depth / 2 + 1.15 + (col * (depth - 2.3)) / (sideCols - 2)]}>
-              <ArchWindow position={[0, 0, 0]} scale={0.58} dark={col % 3 === 0} />
-            </group>
-          ))
-        )
-      )}
-
-      {/* End façades */}
-      {[-depth / 2 - 0.18, depth / 2 + 0.18].map((z, side) => (
-        <group key={`end-${side}`}>
-          {Array.from({ length: floors }).map((_, floor) =>
-            Array.from({ length: endCols }).map((__, col) => (
-              <ArchWindow
-                key={`end-window-${side}-${floor}-${col}`}
-                position={[-width / 2 + 1.0 + (col * (width - 2.0)) / (endCols - 1), floor * floorHeight + 1.65, z]}
-                scale={0.60}
-                dark={col % 2 === 0}
-              />
-            ))
-          )}
-          <mesh position={[0, totalHeight + 0.35, z * 0.98]}>
-            <boxGeometry args={[width + 0.4, 0.45, 0.35]} />
-            <meshStandardMaterial color={C.roof} />
-          </mesh>
-        </group>
-      ))}
-
-      {/* Floor slab edges / gallery bands */}
-      {Array.from({ length: floors }).map((_, floor) => (
-        <mesh key={`front-gallery-${floor}`} position={[0, floor * floorHeight + 0.55, depth / 2 + 0.42]}>
-          <boxGeometry args={[width - 0.45, 0.12, 0.12]} />
-          <meshStandardMaterial color={C.trimDark} />
-        </mesh>
-      ))}
-    </group>
-  );
-}
-function MainEntrance() {
-  return (
-    <group position={[0, 0, 6.2]}>
-      {/* Central projecting entrance block */}
-      <mesh position={[0, 9.5, 0]} castShadow>
-        <boxGeometry args={[8.2, 19, 3.2]} />
-        <meshStandardMaterial color={C.facadeLight} />
-      </mesh>
-
-      {/* Dark vertical framing */}
-      {[-3.3, -2.1, 2.1, 3.3].map((x) => (
-        <mesh key={x} position={[x, 9.5, 1.72]}>
-          <boxGeometry args={[0.35, 18.4, 0.32]} />
-          <meshStandardMaterial color={C.trimDark} />
-        </mesh>
-      ))}
-
-      {/* Entrance arch / portal */}
-      <mesh position={[0, 2.7, 1.78]}>
-        <boxGeometry args={[3.8, 5.8, 0.42]} />
-        <meshStandardMaterial color={C.trimDark} />
-      </mesh>
-
-      <mesh position={[0, 2.7, 2.02]}>
-        <boxGeometry args={[2.75, 4.75, 0.18]} />
-        <meshStandardMaterial color="#253744" />
-      </mesh>
-
-      {/* Tall entrance sign */}
-      <Text
-        position={[0, 15.7, 1.95]}
-        fontSize={0.62}
-        color={C.text}
-        anchorX="center"
-        anchorY="middle"
-        maxWidth={7}
-      >
-        M.H. SABOO SIDDIK COLLEGE
-      </Text>
-
-      {/* Central crown */}
-      <mesh position={[0, 20.0, 0]}>
-        <boxGeometry args={[6.8, 1.4, 3.8]} />
-        <meshStandardMaterial color={C.trim} />
-      </mesh>
-
-      <Dome position={[-2.8, 20.7, 0]} scale={0.85} />
-      <Dome position={[2.8, 20.7, 0]} scale={0.85} />
-
-      {/* Clearly visible entrance staircase */}
-      {Array.from({ length: 6 }).map((_, i) => (
-        <mesh
-          key={i}
-          position={[0, 0.14 + i * 0.14, 4.15 - i * 0.48]}
-          receiveShadow
-        >
-          <boxGeometry args={[7.0 - i * 0.22, 0.28, 0.62]} />
-          <meshStandardMaterial color={i % 2 ? "#cfc5ba" : "#bdb2a7"} />
-        </mesh>
-      ))}
-
-      <mesh position={[0, 1.05, 1.1]}>
-        <boxGeometry args={[5.8, 0.16, 0.16]} />
-        <meshStandardMaterial color={C.trimDark} />
-      </mesh>
-    </group>
-  );
-}
-
-function MainCollegeBuilding() {
-  const floorHeight = 3.15;
-  const floors = 5;
-  const totalHeight = floorHeight * floors;
-
-  return (
-    <group>
-      {/* Main rectangular academic block */}
-      <group position={[0, 0, -5]}>
-        <mesh position={[0, totalHeight / 2, 0]} castShadow receiveShadow>
-          <boxGeometry args={[32, totalHeight, 8.5]} />
-          <meshStandardMaterial color={C.facadeLight} />
-        </mesh>
-
-        {/* Deep horizontal floor galleries */}
-        {Array.from({ length: floors + 1 }).map((_, i) => (
-          <mesh key={`floor-band-${i}`} position={[0, i * floorHeight, 4.42]}>
-            <boxGeometry args={[32.5, 0.24, 0.42]} />
-            <meshStandardMaterial color={i === 0 ? C.trimDark : C.trim} />
-          </mesh>
-        ))}
-
-        {/* Vertical façade piers */}
-        {Array.from({ length: 15 }).map((_, i) => (
-          <VerticalColumn
-            key={`main-pier-${i}`}
-            height={totalHeight}
-            position={[-15.5 + i * (31 / 14), totalHeight / 2, 4.55]}
-          />
-        ))}
-
-        {/* Five levels of tall windows */}
-        {Array.from({ length: floors }).map((_, floor) =>
-          Array.from({ length: 13 }).map((__, col) => (
-            <ArchWindow
-              key={`main-front-window-${floor}-${col}`}
-              position={[-13.8 + col * 2.3, floor * floorHeight + 1.65, 4.70]}
-              scale={0.67}
-              dark={col % 4 === 0}
-            />
-          ))
-        )}
-
-        {/* Window mullions and gallery rails */}
-        {Array.from({ length: floors }).map((_, floor) => (
-          <group key={`main-gallery-${floor}`} position={[0, floor * floorHeight + 0.62, 4.92]}>
-            <mesh>
-              <boxGeometry args={[31.3, 0.11, 0.10]} />
-              <meshStandardMaterial color={C.trimDark} />
-            </mesh>
-            {Array.from({ length: 28 }).map((__, i) => (
-              <mesh key={i} position={[-15.1 + i * 1.12, -0.48, 0]}>
-                <boxGeometry args={[0.07, 0.92, 0.07]} />
-                <meshStandardMaterial color={C.trimDark} />
-              </mesh>
-            ))}
-          </group>
-        ))}
-
-        {/* Side elevations with windows so the building remains detailed from every camera angle */}
-        {[-16.25, 16.25].map((x, side) => (
-          <group key={`main-side-${side}`}>
-            {Array.from({ length: floors }).map((_, floor) =>
-              Array.from({ length: 3 }).map((__, col) => (
-                <ArchWindow
-                  key={`side-window-${side}-${floor}-${col}`}
-                  position={[x, floor * floorHeight + 1.65, -2.7 + col * 2.7]}
-                  scale={0.70}
-                  dark={col === 1}
-                />
-              ))
-            )}
-            <mesh position={[x, totalHeight / 2, 4.0]}>
-              <boxGeometry args={[0.25, totalHeight, 0.25]} />
-              <meshStandardMaterial color={C.trimDark} />
-            </mesh>
-          </group>
-        ))}
-
-        {/* Rear windows */}
-        {Array.from({ length: floors }).map((_, floor) =>
-          Array.from({ length: 11 }).map((__, col) => (
-            <ArchWindow
-              key={`rear-window-${floor}-${col}`}
-              position={[-12.5 + col * 2.5, floor * floorHeight + 1.65, -4.70]}
-              scale={0.56}
-              dark={col % 3 === 0}
-            />
-          ))
-        )}
-
-        <mesh position={[0, totalHeight + 0.35, 0]}>
-          <boxGeometry args={[32.7, 0.72, 8.9]} />
-          <meshStandardMaterial color={C.roof} />
-        </mesh>
-      </group>
-
-      {/* Central projecting entrance / historic tower composition */}
-      <group position={[0, 0, -0.35]}>
-        <mesh position={[0, 9.2, 0]} castShadow>
-          <boxGeometry args={[8.4, 18.4, 3.3]} />
-          <meshStandardMaterial color={C.facadeLight} />
-        </mesh>
-
-        {[-3.35, -2.05, 2.05, 3.35].map((x) => (
-          <mesh key={x} position={[x, 9.3, 1.78]}>
-            <boxGeometry args={[0.36, 17.9, 0.36]} />
-            <meshStandardMaterial color={C.trimDark} />
-          </mesh>
-        ))}
-
-        {/* Recessed tall central gallery */}
-        <mesh position={[0, 12.15, 1.82]}>
-          <boxGeometry args={[4.05, 7.2, 0.18]} />
-          <meshStandardMaterial color={C.trimDark} />
-        </mesh>
-        <mesh position={[0, 12.15, 1.95]}>
-          <boxGeometry args={[3.3, 6.35, 0.08]} />
-          <meshStandardMaterial color={C.glass} />
-        </mesh>
-        {[-1.1, 0, 1.1].map((x) => (
-          <mesh key={`tower-v-${x}`} position={[x, 12.15, 2.05]}>
-            <boxGeometry args={[0.08, 6.25, 0.08]} />
-            <meshStandardMaterial color={C.trimDark} />
-          </mesh>
-        ))}
-        {[-2.4, -1.2, 0, 1.2, 2.4].map((y) => (
-          <mesh key={`tower-h-${y}`} position={[0, 12.15 + y, 2.05]}>
-            <boxGeometry args={[3.15, 0.08, 0.08]} />
-            <meshStandardMaterial color={C.trimDark} />
-          </mesh>
-        ))}
-
-        {/* Main entrance doors */}
-        <mesh position={[0, 2.35, 1.83]}>
-          <boxGeometry args={[3.2, 4.7, 0.22]} />
-          <meshStandardMaterial color="#283b48" />
-        </mesh>
-        {[-0.75, 0.75].map((x) => (
-          <mesh key={x} position={[x, 2.35, 1.98]}>
-            <boxGeometry args={[0.06, 4.25, 0.06]} />
-            <meshStandardMaterial color="#cbd5df" />
-          </mesh>
-        ))}
-        <mesh position={[0, 4.55, 2.0]}>
-          <boxGeometry args={[3.15, 0.08, 0.08]} />
-          <meshStandardMaterial color="#cbd5df" />
-        </mesh>
-
-        <Text position={[0, 7.65, 2.02]} fontSize={0.42} color={C.text} anchorX="center">
-          M.H. SABOO SIDDIK
-        </Text>
-
-        <mesh position={[0, 18.85, 0]}>
-          <boxGeometry args={[6.9, 1.25, 3.9]} />
-          <meshStandardMaterial color={C.trim} />
-        </mesh>
-        <Dome position={[-2.25, 19.9, 0]} scale={0.74} />
-        <Dome position={[2.25, 19.9, 0]} scale={0.74} />
-
-        {/* Wide entrance steps */}
-        {Array.from({ length: 7 }).map((_, i) => (
-          <mesh key={`entry-step-${i}`} position={[0, 0.13 + i * 0.15, 3.9 - i * 0.45]}>
-            <boxGeometry args={[7.1 - i * 0.2, 0.26, 0.58]} />
-            <meshStandardMaterial color={i % 2 ? '#cfc5ba' : '#b8aea4'} />
-          </mesh>
-        ))}
-
-        {/* Entrance canopy and gallery rails */}
-        <mesh position={[0, 5.2, 2.65]}>
-          <boxGeometry args={[6.0, 0.18, 1.0]} />
-          <meshStandardMaterial color={C.trimDark} />
-        </mesh>
-        {Array.from({ length: 7 }).map((_, i) => (
-          <mesh key={`canopy-post-${i}`} position={[-2.7 + i * 0.9, 4.65, 2.95]}>
-            <boxGeometry args={[0.08, 1.1, 0.08]} />
-            <meshStandardMaterial color={C.trimDark} />
-          </mesh>
-        ))}
-      </group>
-
-      {/* 90° left and right wings with detailed galleries */}
-      <Wing position={[-11.7, 0, -3.2]} width={8.8} depth={18} floors={5} rotate={Math.PI / 2} />
-      <Wing position={[11.7, 0, -3.2]} width={8.8} depth={18} floors={5} rotate={-Math.PI / 2} />
-
-      {/* Open courtyard / college forecourt */}
-      <mesh position={[0, 0.06, 5.2]} rotation-x={-Math.PI / 2}>
-        <planeGeometry args={[24, 8]} />
-        <meshStandardMaterial color="#d5d0c7" />
-      </mesh>
-      {[-8, 8].map((x) => (
-        <group key={x} position={[x, 0, 5.2]}>
-          <mesh position={[0, 0.12, 0]}>
-            <cylinderGeometry args={[1.8, 1.8, 0.24, 32]} />
-            <meshStandardMaterial color="#b8b0a7" />
-          </mesh>
-          <Tree position={[0, 0.15, 0]} scale={0.75} />
-        </group>
-      ))}
-
-      <Text position={[0, 0.2, 9]} fontSize={0.48} color="#7a736d" anchorX="center">
-        M.H. SABOO SIDDIK COLLEGE CAMPUS
-      </Text>
-    </group>
-  );
-}
-function AnnexBuilding({ position, label, width = 8, depth = 6, height = 5 }) {
-  return (
-    <group position={position}>
-      <mesh position={[0, height / 2, 0]} castShadow>
-        <boxGeometry args={[width, height, depth]} />
-        <meshStandardMaterial color={C.facadeLight} />
-      </mesh>
-      <mesh position={[0, height + 0.22, 0]}>
-        <boxGeometry args={[width + 0.4, 0.45, depth + 0.4]} />
-        <meshStandardMaterial color={C.roof} />
-      </mesh>
-
-      {[-width / 3, 0, width / 3].map((x) => (
-        <ArchWindow
-          key={x}
-          position={[x, height * 0.57, depth / 2 + 0.12]}
-          scale={0.7}
-          dark
-        />
-      ))}
-
-      <Text
-        position={[0, height + 0.65, depth / 2]}
-        fontSize={0.5}
-        color={C.text}
-        anchorX="center"
-      >
-        {label}
-      </Text>
-    </group>
-  );
-}
-
-function Gate({ position, label, highlighted = false }) {
-  return (
-    <group position={position}>
-      <mesh position={[-2.5, 2.1, 0]}>
-        <boxGeometry args={[0.28, 4.2, 0.28]} />
-        <meshStandardMaterial color={highlighted ? C.blue : C.trimDark} />
-      </mesh>
-      <mesh position={[2.5, 2.1, 0]}>
-        <boxGeometry args={[0.28, 4.2, 0.28]} />
-        <meshStandardMaterial color={highlighted ? C.blue : C.trimDark} />
-      </mesh>
-      <mesh position={[0, 4.0, 0]}>
-        <boxGeometry args={[5.3, 0.3, 0.3]} />
-        <meshStandardMaterial color={highlighted ? C.blue : C.trimDark} />
-      </mesh>
-      <Text
-        position={[0, 4.55, 0]}
-        fontSize={0.48}
-        color={highlighted ? C.blue : C.text}
-        anchorX="center"
-      >
-        {label}
-      </Text>
-    </group>
-  );
-}
-
-function YouMarker({ position = [0, 0.2, 18], pulse = false }) {
-  const ref = useRef();
-
-  useFrame(({ clock }) => {
-    if (ref.current && pulse) {
-      const s = 1 + Math.sin(clock.elapsedTime * 4) * 0.08;
-      ref.current.scale.setScalar(s);
+function InteriorKeyboard({ controlsRef, floor, enabled = true }) {
+  const { camera } = useThree();
+  const keys = useRef({});
+  useEffect(() => {
+    const down = (e) => { keys.current[e.key.toLowerCase()] = true; };
+    const up = (e) => { keys.current[e.key.toLowerCase()] = false; };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+    };
+  }, []);
+  useFrame((_, delta) => {
+    if (!enabled) return;
+    const k = keys.current;
+    const speed = 7 * delta;
+    let dx = 0;
+    let dz = 0;
+    if (k.w || k.arrowup) dz -= speed;
+    if (k.s || k.arrowdown) dz += speed;
+    if (k.a || k.arrowleft) dx -= speed;
+    if (k.d || k.arrowright) dx += speed;
+    if (!dx && !dz) return;
+    camera.position.x = THREE.MathUtils.clamp(camera.position.x + dx, -13.2, 13.2);
+    camera.position.z = THREE.MathUtils.clamp(camera.position.z + dz, -7.0, 7.0);
+    camera.position.y = floor * FLOOR_H + 7.0;
+    if (controlsRef.current) {
+      controlsRef.current.target.x = THREE.MathUtils.clamp(controlsRef.current.target.x + dx, -13.0, 13.0);
+      controlsRef.current.target.z = THREE.MathUtils.clamp(controlsRef.current.target.z + dz, -6.5, 6.5);
+      controlsRef.current.update();
     }
   });
-
-  return (
-    <group position={position} ref={ref}>
-      <mesh position={[0, 0.05, 0]} rotation-x={-Math.PI / 2}>
-        <circleGeometry args={[1.0, 32]} />
-        <meshBasicMaterial color={C.blue} transparent opacity={0.18} />
-      </mesh>
-      <mesh position={[0, 0.55, 0]}>
-        <sphereGeometry args={[0.38, 20, 20]} />
-        <meshBasicMaterial color={C.blue} />
-      </mesh>
-      <Html center position={[0, 1.5, 0]}>
-        <div style={{
-          background: "#ffffff",
-          border: `2px solid ${C.blue}`,
-          borderRadius: 10,
-          padding: "6px 10px",
-          font: "700 12px Inter, sans-serif",
-          color: C.blue,
-          whiteSpace: "nowrap",
-          boxShadow: "0 5px 18px rgba(0,0,0,.12)",
-        }}>
-          YOU ARE HERE
-        </div>
-      </Html>
-    </group>
-  );
+  return null;
 }
 
-function DynamicYouMarker({ targetPosition, duration = 1.7 }) {
-  const groupRef = useRef();
-  const current = useRef(new THREE.Vector3(...targetPosition));
-  const from = useRef(new THREE.Vector3(...targetPosition));
-  const target = useRef(new THREE.Vector3(...targetPosition));
-  const startedAt = useRef(performance.now());
+function stageToPhase(stage, currentStep) {
+  if (stage === "start" || stage === "route") return "approach";
+  if (stage === "stairs") return "stairs";
+  if (stage === "interiorWalk") return "corridor";
+  if (stage === "interior") return currentStep >= 3 ? "destination" : "corridor";
+  return currentStep <= 1 ? "stairs" : currentStep === 2 ? "corridor" : "destination";
+}
+
+function Scene({ navigationStarted, destination, currentStep }) {
+  const target = getTarget(destination);
+  const [stage, setStage] = useState(navigationStarted ? "start" : "campus");
+  const [autoMotion, setAutoMotion] = useState(false);
+  const [floor, setFloor] = useState(navigationStarted ? 0 : target.floor);
+  const [view, setView] = useState("campus");
+  const [selectedRoom, setSelectedRoom] = useState(target.room);
+  const controlsRef = useRef();
+
+  // The visible instruction follows the actual 3D navigation stage. This keeps
+  // the command and camera movement synchronized.
+  const phase = stageToPhase(stage, currentStep);
 
   useEffect(() => {
-    from.current.copy(current.current);
-    target.current.set(targetPosition[0], targetPosition[1], targetPosition[2]);
-    startedAt.current = performance.now();
-  }, [targetPosition[0], targetPosition[1], targetPosition[2]]);
-
-  useFrame(({ clock }) => {
-    const t = Math.min(1, (performance.now() - startedAt.current) / 1000 / duration);
-    const eased = t * t * (3 - 2 * t);
-    current.current.lerpVectors(from.current, target.current, eased);
-
-    if (groupRef.current) {
-      groupRef.current.position.copy(current.current);
-      groupRef.current.scale.setScalar(1 + Math.sin(clock.elapsedTime * 5) * 0.06);
-    }
-  });
-
-  return (
-    <group ref={groupRef}>
-      <mesh position={[0, 0.05, 0]} rotation-x={-Math.PI / 2}>
-        <circleGeometry args={[1.0, 32]} />
-        <meshBasicMaterial color={C.blue} transparent opacity={0.18} />
-      </mesh>
-      <mesh position={[0, 0.42, 0]}>
-        <sphereGeometry args={[0.30, 20, 16]} />
-        <meshBasicMaterial color={C.blue} />
-      </mesh>
-      <mesh position={[0, 0.78, 0]}>
-        <coneGeometry args={[0.18, 0.55, 16]} />
-        <meshBasicMaterial color={C.blue} />
-      </mesh>
-      <Html center position={[0, 1.55, 0]}>
-        <div style={{
-          background: "#ffffff",
-          border: `2px solid ${C.blue}`,
-          borderRadius: 10,
-          padding: "6px 10px",
-          font: "700 12px Inter, sans-serif",
-          color: C.blue,
-          whiteSpace: "nowrap",
-          boxShadow: "0 5px 18px rgba(0,0,0,.12)",
-        }}>
-          YOU ARE HERE
-        </div>
-      </Html>
-    </group>
-  );
-}
-
-
-function StartHereMarker({ visible }) {
-  const ref = useRef();
-
-  useFrame(({ clock }) => {
-    if (ref.current) {
-      ref.current.position.y = 0.7 + Math.sin(clock.elapsedTime * 3) * 0.08;
-    }
-  });
-
-  if (!visible) return null;
-
-  return (
-    <group ref={ref} position={[0, 0.7, 25.2]}>
-      <mesh rotation-x={-Math.PI / 2}>
-        <ringGeometry args={[0.65, 0.95, 32]} />
-        <meshBasicMaterial color={C.blue} transparent opacity={0.9} />
-      </mesh>
-      <Html center position={[0, 1.7, 0]}>
-        <div
-          style={{
-            background: C.blue,
-            color: "#fff",
-            padding: "9px 14px",
-            borderRadius: 999,
-            font: "800 12px Inter, sans-serif",
-            letterSpacing: ".04em",
-            whiteSpace: "nowrap",
-            boxShadow: "0 8px 24px rgba(47,111,237,.35)",
-          }}
-        >
-          START HERE
-        </div>
-      </Html>
-    </group>
-  );
-}
-
-function CampusRoute({ active }) {
-  if (!active) return null;
-
-  const points = [
-    [0, 0.22, 18],
-    [0, 0.22, 12.2],
-    [0, 0.22, 18.0],
-    [0, 0.22, 10.0],
-    [0, 0.22, 5.0],
-  ];
-
-  return (
-    <>
-      <Line
-        points={points}
-        color={C.blue}
-        lineWidth={4}
-        transparent
-        opacity={0.95}
-      />
-      <mesh position={[0, 0.25, 12.2]} rotation-x={-Math.PI / 2}>
-        <circleGeometry args={[0.25, 20]} />
-        <meshBasicMaterial color={C.blue} />
-      </mesh>
-    </>
-  );
-}
-
-function CampusExterior({ navigationStage, currentStep = 0 }) {
-  const navigating = navigationStage !== "campus";
-  const routePoints =
-    currentStep <= 0
-      ? [[-15, 0.24, 28], [0, 0.24, 28], [0, 0.24, 20], [0, 0.24, 12], [0, 0.24, 5]]
-      : currentStep === 1
-      ? [[0, 0.24, 20], [0, 0.24, 12], [0, 0.24, 5]]
-      : [[0, 0.24, 12], [0, 0.24, 5]];
-
-  return (
-    <group>
-      <Ground />
-      <MainCollegeBuilding />
-
-      {/* Large open courtyard */}
-      <mesh position={[0, 0.055, 11]} rotation-x={-Math.PI / 2}>
-        <planeGeometry args={[34, 21]} />
-        <meshStandardMaterial color="#dedbd4" />
-      </mesh>
-
-      {/* Front-side canteen, with GCR behind it */}
-      <AnnexBuilding position={[19, 0, 10.5]} label="CANTEEN" width={7.5} depth={5.2} height={5} />
-      <AnnexBuilding position={[19, 0, 4.7]} label="GCR" width={6.7} depth={4.4} height={4.5} />
-
-      <AnnexBuilding position={[-5, 0, -20]} label="LIBRARY" width={9} depth={7} height={6} />
-      <AnnexBuilding position={[-20, 0, -15]} label="DIPLOMA BLOCK" width={9} depth={7} height={7} />
-
-      {/* Two front entry points + side exit */}
-      <Gate position={[-15, 0, 29]} label="MAIN GATE" highlighted={navigating} />
-      <Gate position={[15, 0, 29]} label="ENTRY GATE" />
-      <Gate position={[-26, 0, 4]} label="EXIT GATE" />
-
-      <Tree position={[-21, 0, 21]} scale={0.9} />
-      <Tree position={[21, 0, 21]} scale={1.0} />
-      <Tree position={[-23, 0, 10]} scale={0.8} />
-      <Tree position={[23, 0, 10]} scale={0.9} />
-      <Tree position={[-21, 0, -2]} scale={0.75} />
-      <Tree position={[21, 0, -2]} scale={0.75} />
-
-      {!navigating ? (
-        <YouMarker position={[0, 0.2, 25.2]} pulse />
-      ) : (
-        <DynamicYouMarker
-          targetPosition={
-            navigationStage === "start"
-              ? [-15, 0.25, 28]
-              : currentStep <= 0
-              ? [0, 0.25, 20]
-              : currentStep === 1
-              ? [0, 0.25, 12]
-              : [0, 0.25, 5]
-          }
-        />
-      )}
-      <StartHereMarker visible={navigationStage === "start"} />
-
-      {navigating && navigationStage !== "start" && (
-        <>
-          <Line points={routePoints} color={C.blue} lineWidth={4} />
-          {routePoints.slice(1).map((p, i) => (
-            <mesh key={i} position={[p[0], 0.3, p[2]]} rotation-x={-Math.PI / 2}>
-              <circleGeometry args={[0.2, 20]} />
-              <meshBasicMaterial color={C.blue} />
-            </mesh>
-          ))}
-        </>
-      )}
-    </group>
-  );
-}
-function InteriorRoom({ x, y, label, active = false, width = 3.2 }) {
-  return (
-    <group position={[x, y, -1.3]}>
-      <mesh>
-        <boxGeometry args={[width, 2.35, 2.5]} />
-        <meshStandardMaterial
-          color={active ? "#dceaff" : "#f0e9df"}
-          emissive={active ? "#376edc" : "#000000"}
-          emissiveIntensity={active ? 0.15 : 0}
-        />
-      </mesh>
-      <mesh position={[0, 0, 1.27]}>
-        <boxGeometry args={[width * 0.78, 1.55, 0.08]} />
-        <meshStandardMaterial color={active ? C.blue : C.window} />
-      </mesh>
-      <Text
-        position={[0, 0, 1.38]}
-        fontSize={0.35}
-        color={active ? "#ffffff" : C.text}
-        anchorX="center"
-        anchorY="middle"
-        maxWidth={width - 0.3}
-      >
-        {label}
-      </Text>
-    </group>
-  );
-}
-
-function Stairs({ x = -4.5, y = 0 }) {
-  return (
-    <group position={[x, y, 0]}>
-      {/* lower staircase */}
-      {Array.from({ length: 9 }).map((_, i) => (
-        <mesh key={`lower-${i}`} position={[i * 0.32, i * 0.16, 0]}>
-          <boxGeometry args={[0.62, 0.30, 2.2]} />
-          <meshStandardMaterial color={i % 2 ? "#a9a198" : "#c0b8af"} />
-        </mesh>
-      ))}
-
-      {/* landing */}
-      <mesh position={[1.75, 1.48, 0]}>
-        <boxGeometry args={[2.0, 0.30, 2.35]} />
-        <meshStandardMaterial color="#aaa198" />
-      </mesh>
-
-      {/* upper staircase */}
-      {Array.from({ length: 9 }).map((_, i) => (
-        <mesh key={`upper-${i}`} position={[2.15 - i * 0.32, 1.64 + i * 0.16, 0]}>
-          <boxGeometry args={[0.62, 0.30, 2.2]} />
-          <meshStandardMaterial color={i % 2 ? "#a9a198" : "#c0b8af"} />
-        </mesh>
-      ))}
-
-      <Text position={[1.0, 3.35, 1.35]} fontSize={0.34} color={C.text}>
-        STAIRS ↑
-      </Text>
-
-      <Html center position={[1.0, 2.8, 1.55]}>
-        <div
-          style={{
-            background: "#fff",
-            border: `2px solid ${C.blue}`,
-            borderRadius: 999,
-            padding: "5px 9px",
-            color: C.blue,
-            font: "800 11px Inter, sans-serif",
-            whiteSpace: "nowrap",
-            boxShadow: "0 5px 14px rgba(0,0,0,.12)",
-          }}
-        >
-          GO UP
-        </div>
-      </Html>
-    </group>
-  );
-}
-
-function Lift({ x = -7, y = 0, label = "STUDENT LIFT" }) {
-  return (
-    <group position={[x, y, 0]}>
-      <mesh>
-        <boxGeometry args={[2.1, 2.7, 2.0]} />
-        <meshStandardMaterial color="#d8dce2" />
-      </mesh>
-      <mesh position={[0, 0, 1.02]}>
-        <boxGeometry args={[1.45, 1.8, 0.08]} />
-        <meshStandardMaterial color="#52606b" />
-      </mesh>
-      <Text position={[0, 1.55, 1.12]} fontSize={0.27} color={C.text}>
-        {label}
-      </Text>
-    </group>
-  );
-}
-
-function Washroom({ x, y, label }) {
-  return (
-    <group position={[x, y, -1.3]}>
-      <mesh>
-        <boxGeometry args={[2.4, 2.35, 2.4]} />
-        <meshStandardMaterial color="#e8eef1" />
-      </mesh>
-      <Text position={[0, 0, 1.27]} fontSize={0.28} color={C.text}>
-        {label}
-      </Text>
-    </group>
-  );
-}
-
-function LabFurniture({ type = "lab" }) {
-  const count = type === "computer" ? 6 : 5;
-  return (
-    <group>
-      {Array.from({ length: count }).map((_, i) => {
-        const x = -5.2 + (i % 3) * 2.8;
-        const z = -3.9 + Math.floor(i / 3) * 2.0;
-        return (
-          <group key={i} position={[x, 0.45, z]}>
-            <mesh>
-              <boxGeometry args={[2.1, 0.18, 0.9]} />
-              <meshStandardMaterial color="#b6a99d" />
-            </mesh>
-            <mesh position={[0, 0.35, -0.25]}>
-              <boxGeometry args={[1.45, 0.55, 0.12]} />
-              <meshStandardMaterial color="#596b78" />
-            </mesh>
-            <mesh position={[0, 0.02, 0.55]}>
-              <boxGeometry args={[1.1, 0.65, 0.08]} />
-              <meshStandardMaterial color="#7a665b" />
-            </mesh>
-          </group>
-        );
-      })}
-    </group>
-  );
-}
-
-function ClassroomFurniture() {
-  return (
-    <group>
-      <mesh position={[7.0, 1.15, -4.9]}>
-        <boxGeometry args={[5.2, 2.0, 0.16]} />
-        <meshStandardMaterial color="#e8e2da" />
-      </mesh>
-      <mesh position={[7.0, 0.62, -4.75]}>
-        <boxGeometry args={[4.6, 0.75, 0.08]} />
-        <meshStandardMaterial color="#50616d" />
-      </mesh>
-      {Array.from({ length: 6 }).map((_, i) => (
-        <group key={i} position={[5.0 + (i % 3) * 2.0, 0.48, -2.6 + Math.floor(i / 3) * 1.8]}>
-          <mesh>
-            <boxGeometry args={[1.45, 0.16, 0.7]} />
-            <meshStandardMaterial color="#b8aaa0" />
-          </mesh>
-          <mesh position={[0, 0.38, 0.15]}>
-            <boxGeometry args={[1.0, 0.45, 0.08]} />
-            <meshStandardMaterial color="#6f7f88" />
-          </mesh>
-        </group>
-      ))}
-    </group>
-  );
-}
-
-function FloorInterior({ floor, destination, navigationPhase = "stairs", currentStep = 0 }) {
-  const target = useTarget(destination);
-  const showStairs = navigationPhase === "stairs";
-  const showCorridor = navigationPhase === "corridor" || navigationPhase === "destination";
-  const showDestination = navigationPhase === "destination";
-
-  const floorRooms = {
-    0: [
-      ["GCR", -9, -2, 4.0],
-      ["CANTEEN", 8.5, -2, 4.5],
-      ["MAIN ENTRANCE", 0, -5.1, 4.2],
-    ],
-    1: [
-      ["ALMA LATIFI HALL", -8.5, -2, 5.5],
-      ["ROOM 103", 1.8, -2, 4.0],
-      ["ROOM 104", 7.0, -2, 4.0],
-      ["LIBRARY", -2.0, 4.8, 5.0],
-    ],
-    2: [
-      ["AI LAB", -7.0, -2, 4.2],
-      ["IT-302", 0.8, -2, 4.0],
-      ["IT LAB", 6.8, -2, 5.0],
-      ["PROGRAMMING LAB", -2.5, 4.8, 5.0],
-    ],
-    3: [
-      ["COMPUTER CENTRE", -7.0, -2, 4.8],
-      ["IT-303", 0.0, -2, 4.0],
-      ["IT-301", 6.8, -2, 4.0],
-      ["STUDENT LIFT", -9.0, 4.8, 3.5],
-    ],
-    4: [
-      ["BCR", -7.0, -2, 4.2],
-      ["SEMINAR HALL", 0.5, -2, 5.8],
-      ["ROOM 407", 7.2, -2, 4.0],
-    ],
-    5: [
-      ["ADV. COMMUNICATION LAB", -7.0, -2, 5.4],
-      ["BASIC COMMUNICATION LAB", 0.0, -2, 5.4],
-      ["MFOC LAB", 7.0, -2, 4.4],
-      ["ANTENNA LAB", -3.0, 4.8, 4.5],
-    ],
-  };
-
-  const rooms = floorRooms[floor] || floorRooms[2];
-
-  return (
-    <group position={[0, floor * 3.15, 0]}>
-      {/* Full floor slab and perimeter */}
-      <mesh position={[0, -0.3, 0]} receiveShadow>
-        <boxGeometry args={[29, 0.6, 17]} />
-        <meshStandardMaterial color="#d5d0c8" />
-      </mesh>
-      <Line
-        points={[[-14.5, 0.02, -8.5], [14.5, 0.02, -8.5], [14.5, 0.02, 8.5], [-14.5, 0.02, 8.5], [-14.5, 0.02, -8.5]]}
-        color="#82776f"
-        lineWidth={3}
-      />
-
-      {/* Open-cutaway perimeter walls */}
-      <mesh position={[0, 1.55, -8.15]}>
-        <boxGeometry args={[28.6, 3.1, 0.3]} />
-        <meshStandardMaterial color={C.facadeLight} />
-      </mesh>
-      <mesh position={[-14.15, 1.55, 0]}>
-        <boxGeometry args={[0.3, 3.1, 16]} />
-        <meshStandardMaterial color={C.facadeLight} />
-      </mesh>
-      <mesh position={[14.15, 1.55, 0]}>
-        <boxGeometry args={[0.3, 3.1, 16]} />
-        <meshStandardMaterial color={C.facadeLight} />
-      </mesh>
-
-      {/* Central corridor */}
-      <mesh position={[0, 0.08, 0.8]}>
-        <boxGeometry args={[25.5, 0.12, 4.4]} />
-        <meshStandardMaterial color="#bcb4aa" />
-      </mesh>
-      <Line points={[[-12.4, 0.17, -1.4], [12.4, 0.17, -1.4]]} color="#a59b92" lineWidth={2} />
-      <Line points={[[-12.4, 0.17, 3.0], [12.4, 0.17, 3.0]]} color="#a59b92" lineWidth={2} />
-
-      {/* Interior ceiling beams + corridor lights */}
-      {Array.from({ length: 7 }).map((_, i) => (
-        <mesh key={`ceiling-beam-${i}`} position={[-10.5 + i * 3.5, 2.85, 0.8]}>
-          <boxGeometry args={[0.18, 0.12, 4.1]} />
-          <meshStandardMaterial color="#b9b1a8" />
-        </mesh>
-      ))}
-      {Array.from({ length: 7 }).map((_, i) => (
-        <mesh key={`ceiling-light-${i}`} position={[-10.5 + i * 3.5, 2.82, 0.8]}>
-          <boxGeometry args={[0.55, 0.06, 1.05]} />
-          <meshStandardMaterial color="#fff6d6" emissive="#fff2b2" emissiveIntensity={0.25} />
-        </mesh>
-      ))}
-
-      {/* Corridor wall doors and notice panels */}
-      {Array.from({ length: 6 }).map((_, i) => (
-        <group key={`corridor-detail-${i}`} position={[-10 + i * 4, 0, -1.58]}>
-          <mesh position={[0, 1.05, 0]}>
-            <boxGeometry args={[1.35, 2.1, 0.10]} />
-            <meshStandardMaterial color="#806b5e" />
-          </mesh>
-          <mesh position={[0.34, 1.05, 0.07]}>
-            <boxGeometry args={[0.05, 1.82, 0.05]} />
-            <meshStandardMaterial color="#d5c9be" />
-          </mesh>
-        </group>
-      ))}
-      {[-9.5, -3.5, 2.5, 8.5].map((x, i) => (
-        <group key={`notice-${i}`} position={[x, 1.45, 3.03]}>
-          <mesh>
-            <boxGeometry args={[1.45, 0.85, 0.05]} />
-            <meshStandardMaterial color="#f5f1e9" />
-          </mesh>
-          <Text position={[0, 0, 0.05]} fontSize={0.16} color="#52606b" anchorX="center">
-            {i % 2 === 0 ? "NOTICE BOARD" : "DEPARTMENT"}
-          </Text>
-        </group>
-      ))}
-
-      {/* Temporary navigation geometry: stairs exist only while climbing */}
-      {showStairs && <Stairs x={-8.2} />}
-      {showStairs && <Lift x={-4.4} label="STUDENT LIFT" />}
-      {showStairs && <Lift x={-1.5} label="STAFF LIFT" />}
-
-      {!showStairs && (
-        <group position={[-8.2, 0.2, 0.8]}>
-          <mesh rotation-x={-Math.PI / 2}>
-            <circleGeometry args={[1.15, 32]} />
-            <meshBasicMaterial color="#e3ded7" />
-          </mesh>
-          <Text position={[0, 0.35, 0]} fontSize={0.25} color="#667085" anchorX="center">
-            FLOOR ACCESS
-          </Text>
-        </group>
-      )}
-
-      {showStairs && (
-        <>
-          <DynamicYouMarker
-            targetPosition={currentStep <= 0 ? [-7.8, 0.38, 0] : [-5.0, 1.90, 0]}
-          />
-          <Line
-            points={
-              currentStep <= 0
-                ? [[-8.0, 0.42, 0], [-6.8, 0.62, 0], [-5.6, 0.82, 0]]
-                : [[-5.0, 1.95, 0], [-3.8, 2.05, 0]]
-            }
-            color={C.blue}
-            lineWidth={4}
-          />
-          <Html center position={[-5.2, 3.75, 1.5]}>
-            <div style={{
-              background: "#fff",
-              color: C.blue,
-              border: `1px solid ${C.blueSoft}`,
-              borderRadius: 10,
-              padding: "8px 11px",
-              font: "800 12px Inter, sans-serif",
-              whiteSpace: "nowrap",
-              boxShadow: "0 8px 22px rgba(0,0,0,.12)",
-            }}>
-              {currentStep <= 0 ? "Move to the stairs" : `Keep climbing → Floor ${floor}`}
-            </div>
-          </Html>
-        </>
-      )}
-
-      {/* Rooms with doors/windows */}
-      {rooms.map(([label, x, z, width]) => {
-        const active = showDestination && target.room === label;
-        return (
-          <group key={label} position={[x, 0, z]}>
-            <mesh position={[0, 1.25, 0]}>
-              <boxGeometry args={[width, 2.5, 3.2]} />
-              <meshStandardMaterial color={active ? "#dbe9ff" : "#eee7de"} />
-            </mesh>
-            <mesh position={[0, 0.95, 1.66]}>
-              <boxGeometry args={[Math.min(width - 0.6, 3.6), 1.65, 0.08]} />
-              <meshStandardMaterial color={active ? C.blue : C.window} />
-            </mesh>
-            <mesh position={[0, 0.85, 1.73]}>
-              <boxGeometry args={[1.0, 1.75, 0.10]} />
-              <meshStandardMaterial color={active ? C.blueSoft : "#7d6c60"} />
-            </mesh>
-            <Text position={[0, 2.8, 1.76]} fontSize={0.30} color={C.text} anchorX="center" maxWidth={width - 0.2}>
-              {label}
-            </Text>
-
-            {/* Interior detail */}
-            {label.includes("LAB") || label.includes("CENTRE") ? <LabFurniture type="computer" /> : null}
-            {label.includes("ROOM") || label.includes("CLASS") ? <ClassroomFurniture /> : null}
-          </group>
-        );
-      })}
-
-      <Washroom x={9.0} y={0} label={floor % 2 === 0 ? "GENTS" : "LADIES"} />
-      <Washroom x={-11.0} y={0} label={floor % 2 === 0 ? "LADIES" : "GENTS"} />
-
-      {/* Forward-only route: old segment is not rendered */}
-      {showCorridor && target && (
-        <>
-          <Line
-            points={
-              showDestination
-                ? [[-2.8, 0.22, 0.8], [0.5, 0.22, 0.8], [target.position[0], 0.22, -1.0], [target.position[0], 0.22, zForTarget(target)]]
-                : [[-3.8, 0.22, 0.8], [0, 0.22, 0.8], [3.5, 0.22, 0.8], [6.0, 0.22, 0.8]]
-            }
-            color={C.blue}
-            lineWidth={4}
-          />
-          {(showDestination ? [-1.7, 0.8, 2.6] : [-2.8, 0.0, 2.8, 5.0]).map((x, i) => (
-            <group key={i} position={[x, 0.3, 0.8]}>
-              <mesh rotation-x={-Math.PI / 2} rotation-z={-Math.PI / 2}>
-                <coneGeometry args={[0.22, 0.58, 3]} />
-                <meshBasicMaterial color={C.blue} />
-              </mesh>
-            </group>
-          ))}
-          <DynamicYouMarker
-            targetPosition={showDestination ? [1.2, 0.25, 0.8] : [-3.8, 0.25, 0.8]}
-          />
-          <Html position={[0, 3.45, 0.8]} center>
-            <div style={{ background: "#fff", padding: "9px 13px", borderRadius: 11, border: `1px solid ${C.blueSoft}`, boxShadow: "0 8px 24px rgba(0,0,0,.12)", font: "800 12px Inter, sans-serif", color: C.text, whiteSpace: "nowrap" }}>
-              {showDestination ? `Turn right → ${target.room}` : "Walk straight → Follow the blue arrows"}
-            </div>
-          </Html>
-        </>
-      )}
-
-      {showDestination && target && (
-        <group position={[target.position[0], 0.35, zForTarget(target)]}>
-          <mesh rotation-x={-Math.PI / 2}>
-            <ringGeometry args={[0.45, 0.72, 32]} />
-            <meshBasicMaterial color={C.red} />
-          </mesh>
-          <mesh position={[0, 0.45, 0]}>
-            <coneGeometry args={[0.28, 0.75, 20]} />
-            <meshBasicMaterial color={C.red} />
-          </mesh>
-          <Html center position={[0, 1.65, 0]}>
-            <div style={{ background: C.red, color: "#fff", padding: "10px 14px", borderRadius: 999, font: "800 12px Inter, sans-serif", whiteSpace: "nowrap", boxShadow: "0 8px 24px rgba(217,75,75,.30)" }}>
-              📍 {target.room}
-            </div>
-          </Html>
-        </group>
-      )}
-
-      <Html position={[0, 3.65, -6.7]} center>
-        <div style={{ background: "rgba(255,255,255,.96)", borderRadius: 12, padding: "8px 15px", font: "800 13px Inter, sans-serif", color: C.text, boxShadow: "0 7px 22px rgba(0,0,0,.1)" }}>
-          FLOOR {floor === 0 ? "GROUND" : floor} • DETAILED FLOOR MAP
-        </div>
-      </Html>
-    </group>
-  );
-}
-
-function zForTarget(target) {
-  // Destination coordinates are world coordinates from the navigation data.
-  // The floor scene is a cutaway map, so only the x/z part is used here.
-  const z = Array.isArray(target.position) ? target.position[2] : -1.0;
-  return Math.max(-5.0, Math.min(5.0, z));
-}
-
-function NavigationOverlay({
-  stage,
-  floor,
-  destination,
-  onStart,
-  onFloorChange,
-}) {
-  const target = useTarget(destination);
-
-  return (
-    <Html fullscreen>
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          pointerEvents: "none",
-          fontFamily: "Inter, Arial, sans-serif",
-        }}
-      >
-        {/* Top navigation chip */}
-        {stage !== "campus" && (
-          <div
-            style={{
-              position: "absolute",
-              top: 18,
-              left: "50%",
-              transform: "translateX(-50%)",
-              background: "#fff",
-              borderRadius: 14,
-              padding: "10px 16px",
-              boxShadow: "0 10px 28px rgba(0,0,0,.14)",
-              color: C.text,
-              fontSize: 13,
-              fontWeight: 700,
-            }}
-          >
-            {stage === "start"
-              ? "Route ready"
-              : stage === "entering"
-              ? "Entering Main Building..."
-              : `Navigating to ${destination}`}
-          </div>
-        )}
-
-        {/* Bottom instruction */}
-        {stage === "interior" && (
-          <div
-            style={{
-              position: "absolute",
-              left: 20,
-              bottom: 20,
-              width: 300,
-              background: "#fff",
-              borderRadius: 18,
-              padding: 16,
-              boxShadow: "0 12px 35px rgba(0,0,0,.18)",
-              pointerEvents: "auto",
-            }}
-          >
-            <div
-              style={{
-                color: C.blue,
-                fontSize: 11,
-                fontWeight: 800,
-                letterSpacing: ".08em",
-                marginBottom: 6,
-              }}
-            >
-              LIVE CAMPUS NAVIGATION
-            </div>
-            <div
-              style={{
-                color: C.text,
-                fontSize: 17,
-                fontWeight: 800,
-                marginBottom: 8,
-              }}
-            >
-              {destination}
-            </div>
-            <div
-              style={{
-                color: "#667085",
-                fontSize: 13,
-                lineHeight: 1.45,
-              }}
-            >
-              {target.floor === floor
-                ? "Walk straight through the corridor, then turn toward your destination."
-                : `Take the stairs/lift to Floor ${target.floor}, then follow the blue route.`}
-            </div>
-
-            <div style={{ display: "flex", gap: 7, marginTop: 13 }}>
-              {[0, 1, 2, 3, 4, 5].map((f) => (
-                <button
-                  key={f}
-                  onClick={() => onFloorChange(f)}
-                  style={{
-                    pointerEvents: "auto",
-                    border: 0,
-                    borderRadius: 9,
-                    padding: "7px 9px",
-                    cursor: "pointer",
-                    background: floor === f ? C.blue : "#eef2f7",
-                    color: floor === f ? "#fff" : C.text,
-                    fontWeight: 800,
-                    fontSize: 11,
-                  }}
-                >
-                  {f === 0 ? "G" : f}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Start here action */}
-        {stage === "start" && (
-          <div
-            style={{
-              position: "absolute",
-              left: "50%",
-              bottom: 30,
-              transform: "translateX(-50%)",
-              background: "#fff",
-              borderRadius: 18,
-              padding: 14,
-              boxShadow: "0 12px 35px rgba(0,0,0,.18)",
-              pointerEvents: "auto",
-              display: "flex",
-              alignItems: "center",
-              gap: 14,
-            }}
-          >
-            <div>
-              <div style={{ fontSize: 12, color: "#667085" }}>
-                You are at the Main Gate
-              </div>
-              <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>
-                Start Here
-              </div>
-            </div>
-            <button
-              onClick={onStart}
-              style={{
-                border: 0,
-                borderRadius: 11,
-                padding: "11px 18px",
-                background: C.blue,
-                color: "#fff",
-                fontWeight: 800,
-                cursor: "pointer",
-              }}
-            >
-              Enter College →
-            </button>
-          </div>
-        )}
-      </div>
-    </Html>
-  );
-}
-
-function Scene({
-  navigationStarted,
-  destination,
-  currentStep,
-}) {
-  const [stage, setStage] = useState(
-    navigationStarted ? "entering" : "campus"
-  );
-  const [floor, setFloor] = useState(2);
-
-  const target = useTarget(destination);
-
-  // Existing NavigationPage already advances currentStep automatically.
-  // Reuse that state so the 3D scene changes naturally:
-  // step 0-1 = stairs/lift, step 2 = corridor, step 3+ = destination.
-  const navigationPhase =
-    currentStep <= 1
-      ? "stairs"
-      : currentStep === 2
-      ? "corridor"
-      : "destination";
+    setSelectedRoom(target.room);
+  }, [target.room]);
 
   useEffect(() => {
-    if (navigationStarted) {
-      setStage("start");
-      setFloor(target.floor);
-    } else {
+    if (!navigationStarted) {
       setStage("campus");
+      setView("campus");
+      setAutoMotion(false);
+      return;
     }
-  }, [navigationStarted, target.floor]);
 
-  useEffect(() => {
-    if (navigationStarted && stage === "start") {
-      const timer = setTimeout(() => setStage("entering"), 1100);
-      return () => clearTimeout(timer);
-    }
-  }, [navigationStarted, stage]);
+    setStage("start");
+    setAutoMotion(false);
+    setFloor(0);
 
-  useEffect(() => {
-    if (stage === "entering") {
-      const timer = setTimeout(() => setStage("interior"), 3200);
-      return () => clearTimeout(timer);
-    }
-  }, [stage]);
+    // 1) Hold the full-campus view briefly.
+    // 2) Zoom toward YOU ARE HERE.
+    // 3) Follow the blue route physically toward the entrance.
+    const a = setTimeout(() => {
+      setStage("route");
+      setAutoMotion(true);
+    }, 900);
 
-  useEffect(() => {
-    if (stage === "interior") {
-      setFloor(target.floor);
-    }
-  }, [stage, target.floor]);
+    return () => clearTimeout(a);
+  }, [navigationStarted]);
 
   return (
     <>
-      <color attach="background" args={["#dcecf5"]} />
+      <color attach="background" args={[C.sky]} />
+      <ambientLight intensity={1.55} />
+      <directionalLight position={[20, 32, 18]} intensity={2.7} castShadow shadow-mapSize-width={2048} shadow-mapSize-height={2048} />
+      <directionalLight position={[-25, 15, -20]} intensity={0.9} />
 
-      <ambientLight intensity={1.8} />
-      <directionalLight
-        position={[15, 28, 18]}
-        intensity={2.5}
-        castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
-      />
-      <directionalLight position={[-20, 12, -10]} intensity={0.8} />
-
-      {stage === "interior" ? (
-        <FloorInterior floor={floor} destination={destination} navigationPhase={navigationPhase} currentStep={currentStep} />
-      ) : (
-        <CampusExterior navigationStage={stage} currentStep={currentStep} />
-      )}
-
-      {stage === "interior" && navigationPhase === "destination" && (
-        <Html fullscreen>
-          <div
-            style={{
-              position: "absolute",
-              top: 20,
-              right: 20,
-              pointerEvents: "none",
-              fontFamily: "Inter, Arial, sans-serif",
-            }}
-          >
-            <div
-              style={{
-                background: "#fff",
-                borderRadius: 16,
-                padding: "12px 15px",
-                boxShadow: "0 10px 30px rgba(0,0,0,.16)",
-                minWidth: 190,
-              }}
-            >
-              <div style={{ fontSize: 11, color: C.blue, fontWeight: 800 }}>
-                DESTINATION
-              </div>
-              <div style={{ fontSize: 17, color: C.text, fontWeight: 800, marginTop: 4 }}>
-                📍 {destination}
-              </div>
-              <div style={{ fontSize: 12, color: "#667085", marginTop: 4 }}>
-                Floor {target.floor}
-              </div>
-            </div>
-          </div>
-        </Html>
-      )}
-
-      {stage === "entering" && (
-        <Html fullscreen>
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              display: "flex",
-              alignItems: "flex-end",
-              justifyContent: "center",
-              paddingBottom: 28,
-              pointerEvents: "none",
-              fontFamily: "Inter, Arial, sans-serif",
-            }}
-          >
-            <div
-              style={{
-                background: "rgba(255,255,255,.96)",
-                borderRadius: 16,
-                padding: "12px 18px",
-                boxShadow: "0 12px 32px rgba(0,0,0,.16)",
-                fontSize: 13,
-                fontWeight: 800,
-                color: C.text,
-              }}
-            >
-              {currentStep <= 1
-                ? `Take the stairs/lift to Floor ${target.floor}`
-                : currentStep === 2
-                ? "You reached the floor • Walk straight"
-                : `Turn right • ${destination} ahead`}
-            </div>
-          </div>
-        </Html>
-      )}
-
-      <SmoothCamera
-        mode={stage === "campus" ? "campus" : stage === "start" ? "gate" : stage === "entering" ? "entrance" : "interior"}
-        targetFloor={floor}
-        navigationPhase={navigationPhase}
-        currentStep={currentStep}
-        onArrive={() => {
-          if (stage === "entering") setStage("interior");
-        }}
-      />
-
-      <NavigationOverlay
-        stage={stage}
-        floor={floor}
-        destination={destination}
-        currentStep={currentStep}
-        onStart={() => setStage("entering")}
-        onFloorChange={setFloor}
-      />
-    </>
-  );
-}
-
-export default function Campus3D({
-  navigationStarted = false,
-  destination = "IT Lab",
-  currentStep = 0,
-}) {
-  return (
-    <div
-      style={{
-        width: "100%",
-        height: "100%",
-        minHeight: 560,
-        position: "relative",
-        overflow: "hidden",
-        borderRadius: 20,
-        background: "#dcecf5",
-      }}
-    >
-      <Canvas
-        shadows
-        camera={{
-          position: [28, 28, 34],
-          fov: 42,
-          near: 0.1,
-          far: 150,
-        }}
-        dpr={[1, 1.7]}
-      >
-        <Scene
-          navigationStarted={navigationStarted}
+      {stage === "interior" || stage === "interiorWalk" ? (
+        <FloorInterior
+          floor={floor}
           destination={destination}
           currentStep={currentStep}
+          selectedRoom={selectedRoom}
+          showRoute={stage === "interiorWalk"}
+          onRoomSelect={(room) => {
+            setSelectedRoom(room);
+            const entry = Object.values(DESTINATIONS).find((d) => d.room === room);
+            if (entry) setFloor(entry.floor);
+          }}
         />
+      ) : (
+        <ExteriorCampus navigationStage={stage} currentStep={currentStep} />
+      )}
+
+      {(stage === "interior" || stage === "interiorWalk") && <InteriorKeyboard controlsRef={controlsRef} floor={floor} enabled={!autoMotion} />}
+
+      <CameraRig stage={stage} floor={floor} view={view} controlsRef={controlsRef} autoMotion={autoMotion} />
+
+      {stage === "route" && (
+        <NavigationCameraMotion
+          stage="route"
+          floor={floor}
+          destination={destination}
+          currentStep={currentStep}
+          controlsRef={controlsRef}
+          onFinish={() => {
+            setStage("stairs");
+            setAutoMotion(true);
+          }}
+        />
+      )}
+
+      {stage === "stairs" && (
+        <NavigationCameraMotion
+          stage="stairs"
+          floor={floor}
+          destination={destination}
+          currentStep={currentStep}
+          controlsRef={controlsRef}
+          onFinish={() => {
+            // Reveal the destination floor only after the stair descent is done.
+            setFloor(target.floor);
+            setStage("interiorWalk");
+            setAutoMotion(true);
+          }}
+        />
+      )}
+
+      {stage === "interiorWalk" && (
+        <NavigationCameraMotion
+          stage="interiorWalk"
+          floor={floor}
+          destination={destination}
+          currentStep={currentStep}
+          controlsRef={controlsRef}
+          onFinish={() => {
+            setStage("interior");
+            setAutoMotion(false);
+          }}
+        />
+      )}
+
+      {/* Reference-style navigation / camera controls. */}
+      <Html fullscreen>
+        <div style={{ position: "absolute", inset: 0, pointerEvents: "none", fontFamily: "Inter, Arial, sans-serif" }}>
+          <div style={{ position: "absolute", top: 16, left: 16, pointerEvents: "auto", display: "flex", gap: 7, flexWrap: "wrap", maxWidth: 510 }}>
+            {[
+              ["campus", "3D CAMPUS"],
+              ["top", "TOP VIEW"],
+              ["front", "FRONT"],
+              ["left", "LEFT WING"],
+              ["right", "RIGHT WING"],
+              ["rear", "REAR"],
+              ["low", "LOW VIEW"],
+            ].map(([id, label]) => (
+              <button
+                key={id}
+                onClick={() => {
+                  if (autoMotion) return;
+                  setView(id);
+                  // IMPORTANT: do not kick the user out of the current floor.
+                  // The same preset buttons work for both the exterior campus and interior floor.
+                }}
+                style={{ border: "1px solid rgba(23,32,51,.12)", borderRadius: 10, padding: "8px 10px", background: view === id ? C.blue : "rgba(255,255,255,.94)", color: view === id ? "#fff" : C.text, fontWeight: 800, fontSize: 11, cursor: autoMotion ? "not-allowed" : "pointer", opacity: autoMotion ? 0.65 : 1, boxShadow: "0 5px 18px rgba(0,0,0,.12)" }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ position: "absolute", top: 16, right: 16, pointerEvents: "auto", background: "rgba(255,255,255,.95)", borderRadius: 14, padding: "9px 12px", boxShadow: "0 8px 24px rgba(0,0,0,.13)", color: C.text, fontSize: 11, lineHeight: 1.45 }}>
+            <b>3D Explore</b><br />
+            Left mouse drag = orbit • Wheel = zoom<br />
+            Right mouse drag = pan<br />
+            Presets work in campus + every floor
+          </div>
+
+          {stage !== "campus" && (
+            <div style={{ position: "absolute", top: 74, left: "50%", transform: "translateX(-50%)", pointerEvents: "none", background: "rgba(255,255,255,.96)", borderRadius: 14, padding: "10px 16px", boxShadow: "0 10px 28px rgba(0,0,0,.14)", color: C.text, fontWeight: 800, fontSize: 13 }}>
+              {stage === "start" ? "START HERE • Main Gate" : stage === "route" ? "Following route → Main Gate" : stage === "stairs" ? "STAIRS • Walk down first → College Entrance" : stage === "entering" ? `Entering College • Floor ${target.floor}` : stage === "interiorWalk" ? `Corridor route → ${destination}` : `Arrived • ${destination}`}
+            </div>
+          )}
+
+          {stage === "interior" && (
+            <div style={{ position: "absolute", left: 16, bottom: 16, pointerEvents: "auto", background: "rgba(255,255,255,.96)", borderRadius: 16, padding: 14, width: 315, boxShadow: "0 12px 35px rgba(0,0,0,.18)" }}>
+              <div style={{ color: C.blue, fontSize: 10, fontWeight: 900, letterSpacing: ".08em" }}>INDOOR CAMPUS NAVIGATION</div>
+              <div style={{ color: C.text, fontSize: 17, fontWeight: 900, marginTop: 4 }}>{destination}</div>
+              <div style={{ color: "#667085", fontSize: 12, lineHeight: 1.45, marginTop: 4 }}>
+                {phase === "approach" ? "Follow the blue route to the Main Gate and entrance stairs." : phase === "stairs" ? "Walk down the visible stairs first. Then continue into the college." : phase === "corridor" ? `Now walk through the corridor toward ${destination}. Classrooms and labs stay visible.` : `Turn toward ${target.room}. You have reached the destination.`}
+              </div>
+              <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+                {Array.from({ length: FLOORS }).map((_, f) => (
+                  <button key={f} onClick={() => setFloor(f)} style={{ border: 0, borderRadius: 8, padding: "6px 9px", background: floor === f ? C.blue : "#eef2f7", color: floor === f ? "#fff" : C.text, fontWeight: 800, fontSize: 11, cursor: "pointer" }}>
+                    {f === 0 ? "G" : f}
+                  </button>
+                ))}
+              </div>
+              <div style={{ marginTop: 9, fontSize: 10, color: "#667085" }}>W/A/S/D or arrow keys = walk camera • click any room = select it</div>
+            </div>
+          )}
+        </div>
+      </Html>
+    </>
+  );
+}
+
+export default function Campus3D({ navigationStarted = false, destination = "IT Lab", currentStep = 0 }) {
+  return (
+    <div style={{ width: "100%", height: "100%", minHeight: 600, position: "relative", overflow: "hidden", borderRadius: 20, background: C.sky }}>
+      <Canvas
+        shadows
+        camera={{ position: [31, 27, 35], fov: 42, near: 0.1, far: 180 }}
+        dpr={[1, 1.7]}
+      >
+        <Scene navigationStarted={navigationStarted} destination={destination} currentStep={currentStep} />
       </Canvas>
     </div>
   );
